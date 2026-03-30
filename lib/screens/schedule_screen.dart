@@ -59,7 +59,7 @@ class _ScheduleScreenState extends State<ScheduleScreen>
               ),
               indicatorSize: TabBarIndicatorSize.tab,
               labelColor: Colors.white,
-              unselectedLabelColor: isDark ? Colors.white54 : Colors.black45,
+              unselectedLabelColor: isDark ? Colors.white54 : Colors.black.withOpacity(0.45),
               labelStyle:
                   const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
               dividerColor: Colors.transparent,
@@ -302,7 +302,7 @@ class _ScheduleScreenState extends State<ScheduleScreen>
                           : '时长 ${period.duration.inMinutes} 分钟  ·  点击填写课程',
                       style: TextStyle(
                         fontSize: 11,
-                        color: isDark ? Colors.white38 : Colors.black38,
+                        color: isDark ? Colors.white.withOpacity(0.38) : Colors.black.withOpacity(0.38),
                       ),
                     ),
                   ],
@@ -327,7 +327,7 @@ class _ScheduleScreenState extends State<ScheduleScreen>
                     period.endTime,
                     style: TextStyle(
                       fontSize: 11,
-                      color: isDark ? Colors.white38 : Colors.black38,
+                      color: isDark ? Colors.white.withOpacity(0.38) : Colors.black.withOpacity(0.38),
                     ),
                   ),
                 ],
@@ -338,7 +338,7 @@ class _ScheduleScreenState extends State<ScheduleScreen>
               Icon(
                 Icons.chevron_right_rounded,
                 size: 18,
-                color: isDark ? Colors.white24 : Colors.black20,
+                color: isDark ? Colors.white.withOpacity(0.24) : Colors.black.withOpacity(0.20),
               ),
             ],
           ),
@@ -392,7 +392,7 @@ class _ScheduleScreenState extends State<ScheduleScreen>
                     width: 36,
                     height: 4,
                     decoration: BoxDecoration(
-                      color: sheetDark ? Colors.white24 : Colors.black12,
+                      color: sheetDark ? Colors.white.withOpacity(0.24) : Colors.black.withOpacity(0.12),
                       borderRadius: BorderRadius.circular(2),
                     ),
                   ),
@@ -437,8 +437,8 @@ class _ScheduleScreenState extends State<ScheduleScreen>
                             style: TextStyle(
                               fontSize: 12,
                               color: sheetDark
-                                  ? Colors.white45
-                                  : Colors.black38,
+                                  ? Colors.white.withOpacity(0.45)
+                                  : Colors.black.withOpacity(0.38),
                             ),
                           ),
                         ],
@@ -556,7 +556,7 @@ class _ScheduleScreenState extends State<ScheduleScreen>
                     suffixStyle: TextStyle(
                       fontSize: 11,
                       color:
-                          sheetDark ? Colors.white38 : Colors.black26,
+                          sheetDark ? Colors.white.withOpacity(0.38) : Colors.black.withOpacity(0.26),
                     ),
                   ),
                   maxLines: 1,
@@ -648,12 +648,12 @@ class _ScheduleScreenState extends State<ScheduleScreen>
         children: [
           Icon(Icons.alarm_add_rounded,
               size: 36,
-              color: isDark ? Colors.white24 : Colors.black20),
+              color: isDark ? Colors.white.withOpacity(0.24) : Colors.black.withOpacity(0.20)),
           const SizedBox(height: 10),
           Text(
             '还没有自定义提醒',
             style: TextStyle(
-              color: isDark ? Colors.white38 : Colors.black38,
+              color: isDark ? Colors.white.withOpacity(0.38) : Colors.black.withOpacity(0.38),
               fontSize: 14,
             ),
           ),
@@ -661,7 +661,7 @@ class _ScheduleScreenState extends State<ScheduleScreen>
           Text(
             '点击右上角「添加」设置提醒',
             style: TextStyle(
-              color: isDark ? Colors.white24 : Colors.black26,
+              color: isDark ? Colors.white.withOpacity(0.24) : Colors.black.withOpacity(0.26),
               fontSize: 12,
             ),
           ),
@@ -705,14 +705,14 @@ class _ScheduleScreenState extends State<ScheduleScreen>
             fontWeight: FontWeight.w500,
             color: reminder.isEnabled
                 ? null
-                : (isDark ? Colors.white30 : Colors.black30),
+                : (isDark ? Colors.white.withOpacity(0.30) : Colors.black.withOpacity(0.30)),
           ),
         ),
         subtitle: Text(
           reminder.timeString,
           style: TextStyle(
             fontSize: 12,
-            color: isDark ? Colors.white45 : Colors.black38,
+            color: isDark ? Colors.white.withOpacity(0.45) : Colors.black.withOpacity(0.38),
           ),
         ),
         trailing: Row(
@@ -726,7 +726,7 @@ class _ScheduleScreenState extends State<ScheduleScreen>
             IconButton(
               icon: Icon(Icons.delete_outline_rounded,
                   size: 18,
-                  color: isDark ? Colors.white30 : Colors.black26),
+                  color: isDark ? Colors.white.withOpacity(0.30) : Colors.black.withOpacity(0.26)),
               onPressed: () {
                 provider.removeReminder(reminder.id);
                 NotificationService.instance.cancel(reminder.id.hashCode);
@@ -787,7 +787,7 @@ class _ScheduleScreenState extends State<ScheduleScreen>
                     width: 36,
                     height: 4,
                     decoration: BoxDecoration(
-                      color: isDark ? Colors.white24 : Colors.black12,
+                      color: isDark ? Colors.white.withOpacity(0.24) : Colors.black.withOpacity(0.12),
                       borderRadius: BorderRadius.circular(2),
                     ),
                   ),
@@ -837,7 +837,7 @@ class _ScheduleScreenState extends State<ScheduleScreen>
                         const Spacer(),
                         Icon(Icons.chevron_right_rounded,
                             color:
-                                isDark ? Colors.white30 : Colors.black26),
+                                isDark ? Colors.white.withOpacity(0.30) : Colors.black.withOpacity(0.26)),
                       ],
                     ),
                   ),
