@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 import 'dart:async';
 import '../theme.dart';
 import '../models/schedule_model.dart';
+import '../models/course_model.dart';
 import '../services/holiday_service.dart';
 
 class TodayScreen extends StatefulWidget {
@@ -12,14 +14,21 @@ class TodayScreen extends StatefulWidget {
   State<TodayScreen> createState() => _TodayScreenState();
 }
 
-class _TodayScreenState extends State<TodayScreen> {
+class _TodayScreenState extends State<TodayScreen>
+    with TickerProviderStateMixin {
   late Timer _timer;
   late DateTime _now;
+  late AnimationController _pulseCtrl;
 
   @override
   void initState() {
     super.initState();
     _now = DateTime.now();
+    _pulseCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 2),
+    )..repeat(reverse: true);
+
     _timer = Timer.periodic(const Duration(seconds: 30), (_) {
       setState(() => _now = DateTime.now());
     });
@@ -28,6 +37,7 @@ class _TodayScreenState extends State<TodayScreen> {
   @override
   void dispose() {
     _timer.cancel();
+    _pulseCtrl.dispose();
     super.dispose();
   }
 
@@ -41,7 +51,6 @@ class _TodayScreenState extends State<TodayScreen> {
     final periods = SchedulePresets.getPeriodsForMode(mode);
     final modeLabel = SchedulePresets.getModeLabel(mode);
 
-    // 计算当前/下节课
     final nowMinutes = _now.hour * 60 + _now.minute;
     ClassPeriod? currentPeriod;
     ClassPeriod? nextPeriod;
@@ -50,7 +59,6 @@ class _TodayScreenState extends State<TodayScreen> {
     for (final period in periods) {
       final startMin = period.startHour * 60 + period.startMinute;
       final endMin = period.endHour * 60 + period.endMinute;
-
       if (nowMinutes >= startMin && nowMinutes < endMin) {
         currentPeriod = period;
       } else if (nowMinutes < startMin && nextPeriod == null) {
@@ -59,93 +67,140 @@ class _TodayScreenState extends State<TodayScreen> {
       }
     }
 
-    return CustomScrollView(
-      slivers: [
-        // 顶部大标题区
-        SliverToBoxAdapter(
-          child: _buildHeader(context, isDark, dayType, holidayNote, modeLabel),
-        ),
+    // 今日完成进度
+    final passedCount = periods.where((p) {
+      final endMin = p.endHour * 60 + p.endMinute;
+      return nowMinutes >= endMin;
+    }).length;
+    final progress = periods.isEmpty ? 0.0 : passedCount / periods.length;
 
-        // 当前状态卡片
+    return CustomScrollView(
+      physics: const BouncingScrollPhysics(),
+      slivers: [
+        SliverToBoxAdapter(
+          child: _buildHeader(
+              context, isDark, dayType, holidayNote, modeLabel,
+              passedCount, periods.length, progress),
+        ),
         SliverToBoxAdapter(
           child: _buildStatusCard(
               context, isDark, currentPeriod, nextPeriod, minutesToNext),
         ),
-
-        // 今日时间轴
         SliverToBoxAdapter(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
-            child: Text(
-              '今日课程安排',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: isDark ? Colors.white70 : Colors.black54,
-              ),
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 10),
+            child: Row(
+              children: [
+                Text(
+                  '今日课程',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: isDark ? Colors.white70 : const Color(0xFF333355),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryDark.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    '共${periods.length}节',
+                    style: const TextStyle(
+                        fontSize: 11, color: AppTheme.primaryDark),
+                  ),
+                ),
+              ],
             ),
           ),
         ),
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+          sliver: SliverList(
+            delegate: SliverChildBuilderDelegate(
+              (context, index) {
+                final period = periods[index];
+                final startMin =
+                    period.startHour * 60 + period.startMinute;
+                final endMin = period.endHour * 60 + period.endMinute;
+                final isActive =
+                    nowMinutes >= startMin && nowMinutes < endMin;
+                final isPast = nowMinutes >= endMin;
+                final isNext =
+                    !isActive && !isPast && nextPeriod?.index == period.index;
+                // 读取用户填写的课程信息
+                final courseProvider = context.watch<CourseProvider>();
+                final course =
+                    courseProvider.getEntry(isWeekday, period.index);
 
-        SliverList(
-          delegate: SliverChildBuilderDelegate(
-            (context, index) {
-              final period = periods[index];
-              final startMin = period.startHour * 60 + period.startMinute;
-              final endMin = period.endHour * 60 + period.endMinute;
-              final isActive = nowMinutes >= startMin && nowMinutes < endMin;
-              final isPast = nowMinutes >= endMin;
-
-              return _buildPeriodTile(
-                  context, isDark, period, isActive, isPast);
-            },
-            childCount: periods.length,
+                return _buildPeriodTile(
+                    context, isDark, period, isActive, isPast, isNext,
+                    nowMinutes, course);
+              },
+              childCount: periods.length,
+            ),
           ),
         ),
-
-        const SliverToBoxAdapter(child: SizedBox(height: 100)),
+        const SliverToBoxAdapter(child: SizedBox(height: 110)),
       ],
     );
   }
 
-  Widget _buildHeader(BuildContext context, bool isDark, DayType dayType,
-      String? holidayNote, String modeLabel) {
+  Widget _buildHeader(
+    BuildContext context,
+    bool isDark,
+    DayType dayType,
+    String? holidayNote,
+    String modeLabel,
+    int passedCount,
+    int totalCount,
+    double progress,
+  ) {
     final weekdays = ['', '周一', '周二', '周三', '周四', '周五', '周六', '周日'];
-    final dateStr =
-        '${_now.month}月${_now.day}日 ${weekdays[_now.weekday]}';
+    final dateStr = '${_now.month}月${_now.day}日  ${weekdays[_now.weekday]}';
     final timeStr = DateFormat('HH:mm').format(_now);
 
-    Color modeColor;
-    IconData modeIcon;
+    Color badgeColor;
+    IconData badgeIcon;
+    String badgeLabel;
     if (dayType == DayType.holiday) {
-      modeColor = Colors.green;
-      modeIcon = Icons.celebration;
+      badgeColor = const Color(0xFF07C160);
+      badgeIcon = Icons.celebration_rounded;
+      badgeLabel = holidayNote ?? '假日';
     } else if (dayType == DayType.workday && _now.weekday > 5) {
-      modeColor = Colors.orange;
-      modeIcon = Icons.work;
+      badgeColor = AppTheme.accentOrange;
+      badgeIcon = Icons.work_outline_rounded;
+      badgeLabel = '调休上班';
     } else if (_now.weekday <= 5) {
-      modeColor = AppTheme.primaryDark;
-      modeIcon = Icons.school;
+      badgeColor = AppTheme.primaryDark;
+      badgeIcon = Icons.school_rounded;
+      badgeLabel = '工作日';
     } else {
-      modeColor = Colors.teal;
-      modeIcon = Icons.weekend;
+      badgeColor = AppTheme.accentTeal;
+      badgeIcon = Icons.weekend_rounded;
+      badgeLabel = '休息日';
     }
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(24, 60, 24, 24),
+      padding: const EdgeInsets.fromLTRB(24, 56, 24, 20),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: isDark
-              ? [AppTheme.darkBg0, AppTheme.darkBg2]
-              : [const Color(0xFFEEF0FF), Colors.white],
+              ? [const Color(0xFF0C0D1A), const Color(0xFF14152B)]
+              : [const Color(0xFFF0F2FF), const Color(0xFFFFFFFF)],
         ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // 时间 + 标签
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
                 child: Column(
@@ -154,40 +209,46 @@ class _TodayScreenState extends State<TodayScreen> {
                     Text(
                       timeStr,
                       style: TextStyle(
-                        fontSize: 52,
+                        fontSize: 56,
                         fontWeight: FontWeight.w800,
-                        color: isDark ? Colors.white : AppTheme.darkBg0,
+                        color: isDark ? Colors.white : const Color(0xFF1A1B30),
                         height: 1.0,
+                        letterSpacing: -1,
                       ),
                     ),
                     const SizedBox(height: 6),
                     Text(
                       dateStr,
                       style: TextStyle(
-                        fontSize: 16,
-                        color: isDark ? Colors.white60 : Colors.black45,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                        color: isDark ? Colors.white54 : Colors.black38,
+                        letterSpacing: 0.3,
                       ),
                     ),
                   ],
                 ),
               ),
+              const SizedBox(width: 12),
               Container(
+                margin: const EdgeInsets.only(top: 8),
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
                 decoration: BoxDecoration(
-                  color: modeColor.withOpacity(0.15),
+                  color: badgeColor.withOpacity(0.13),
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: modeColor.withOpacity(0.3)),
+                  border: Border.all(color: badgeColor.withOpacity(0.3)),
                 ),
                 child: Row(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(modeIcon, color: modeColor, size: 16),
-                    const SizedBox(width: 6),
+                    Icon(badgeIcon, color: badgeColor, size: 14),
+                    const SizedBox(width: 5),
                     Text(
-                      holidayNote ?? modeLabel.split('（').first,
+                      badgeLabel,
                       style: TextStyle(
-                        color: modeColor,
-                        fontSize: 13,
+                        color: badgeColor,
+                        fontSize: 12,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -196,200 +257,304 @@ class _TodayScreenState extends State<TodayScreen> {
               ),
             ],
           ),
+
+          // 进度指示
+          if (totalCount > 0) ...[
+            const SizedBox(height: 18),
+            Row(
+              children: [
+                Expanded(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(3),
+                    child: LinearProgressIndicator(
+                      value: progress,
+                      backgroundColor: isDark
+                          ? Colors.white12
+                          : AppTheme.primaryDark.withOpacity(0.1),
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                          progress >= 1.0
+                              ? AppTheme.accentTeal
+                              : AppTheme.primaryDark),
+                      minHeight: 4,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  '$passedCount / $totalCount 节',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: isDark ? Colors.white38 : Colors.black38,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );
   }
 
-  Widget _buildStatusCard(BuildContext context, bool isDark,
-      ClassPeriod? current, ClassPeriod? next, int? minutesToNext) {
-    final bg = isDark ? AppTheme.darkCard : Colors.white;
+  Widget _buildStatusCard(
+    BuildContext context,
+    bool isDark,
+    ClassPeriod? current,
+    ClassPeriod? next,
+    int? minutesToNext,
+  ) {
+    final bool isFinished = current == null && next == null;
 
-    Widget content;
+    Color accentColor;
+    IconData accentIcon;
+    String labelTop;
+    String labelMain;
+    String labelSub;
+
     if (current != null) {
-      // 上课中
-      content = Row(
-        children: [
-          Container(
-            width: 8,
-            height: 8,
-            decoration: const BoxDecoration(
-              color: Colors.greenAccent,
-              shape: BoxShape.circle,
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  '上课中',
-                  style: TextStyle(
-                      fontSize: 12, color: Colors.greenAccent),
-                ),
-                Text(
-                  current.name,
-                  style: const TextStyle(
-                      fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-              ],
-            ),
-          ),
-          Text(
-            '${current.startTime} - ${current.endTime}',
-            style: TextStyle(
-                fontSize: 14,
-                color: isDark ? Colors.white60 : Colors.black45),
-          ),
-        ],
-      );
+      accentColor = const Color(0xFF07C160);
+      accentIcon = Icons.play_circle_filled_rounded;
+      labelTop = '● 上课中';
+      labelMain = current.name;
+      labelSub = '${current.startTime} — ${current.endTime}';
     } else if (next != null) {
-      // 下节课
-      content = Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: AppTheme.primaryDark.withOpacity(0.15),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: const Icon(Icons.access_time,
-                color: AppTheme.primaryDark, size: 20),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '下节课 · $minutesToNext 分钟后',
-                  style: const TextStyle(
-                      fontSize: 12, color: AppTheme.primaryDark),
-                ),
-                Text(
-                  next.name,
-                  style: const TextStyle(
-                      fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-              ],
-            ),
-          ),
-          Text(
-            next.startTime,
-            style: const TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-                color: AppTheme.primaryDark),
-          ),
-        ],
-      );
+      accentColor = AppTheme.primaryDark;
+      accentIcon = Icons.schedule_rounded;
+      labelTop = '下节课';
+      labelMain = next.name;
+      labelSub = '$minutesToNext 分钟后 · ${next.startTime}';
     } else {
-      // 今日结束
-      content = Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: Colors.teal.withOpacity(0.15),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child:
-                const Icon(Icons.check_circle, color: Colors.teal, size: 20),
-          ),
-          const SizedBox(width: 14),
-          const Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('今日课程已全部结束',
-                    style: TextStyle(fontSize: 12, color: Colors.teal)),
-                Text('好好休息 🌙',
-                    style:
-                        TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-              ],
-            ),
-          ),
-        ],
-      );
+      accentColor = AppTheme.accentTeal;
+      accentIcon = Icons.check_circle_rounded;
+      labelTop = '今日完成';
+      labelMain = '好好休息';
+      labelSub = '明日继续加油 ✨';
     }
 
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: bg,
+        color: isDark ? AppTheme.darkCard : Colors.white,
         borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: accentColor.withOpacity(0.25)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(isDark ? 0.3 : 0.06),
+            color: accentColor.withOpacity(isDark ? 0.08 : 0.08),
             blurRadius: 20,
+            spreadRadius: 2,
             offset: const Offset(0, 4),
           ),
         ],
       ),
-      child: content,
-    );
-  }
-
-  Widget _buildPeriodTile(BuildContext context, bool isDark, ClassPeriod period,
-      bool isActive, bool isPast) {
-    final Color dotColor = isActive
-        ? Colors.greenAccent
-        : isPast
-            ? (isDark ? Colors.white24 : Colors.black12)
-            : AppTheme.primaryDark;
-
-    final Color textColor = isPast
-        ? (isDark ? Colors.white38 : Colors.black26)
-        : (isDark ? Colors.white : Colors.black87);
-
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: isActive
-            ? AppTheme.primaryDark.withOpacity(0.15)
-            : isDark
-                ? AppTheme.darkCard
-                : Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: isActive
-            ? Border.all(color: AppTheme.primaryDark.withOpacity(0.4))
-            : Border.all(
-                color: isDark ? AppTheme.darkBorder : AppTheme.lightBorder),
-      ),
       child: Row(
         children: [
+          // 图标 + 左侧装饰条
           Container(
-            width: 10,
-            height: 10,
+            width: 46,
+            height: 46,
             decoration: BoxDecoration(
-              color: dotColor,
-              shape: BoxShape.circle,
+              color: accentColor.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(14),
             ),
+            child: current != null
+                ? FadeTransition(
+                    opacity: Tween<double>(begin: 0.5, end: 1.0)
+                        .animate(_pulseCtrl),
+                    child: Icon(accentIcon, color: accentColor, size: 24),
+                  )
+                : Icon(accentIcon, color: accentColor, size: 24),
           ),
           const SizedBox(width: 14),
           Expanded(
-            child: Text(
-              period.name,
-              style: TextStyle(
-                fontWeight:
-                    isActive ? FontWeight.bold : FontWeight.normal,
-                color: textColor,
-                fontSize: 15,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  labelTop,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: accentColor,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  labelMain,
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: isDark ? Colors.white : const Color(0xFF1A1B30),
+                    height: 1.2,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  labelSub,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isDark ? Colors.white45 : Colors.black38,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPeriodTile(
+    BuildContext context,
+    bool isDark,
+    ClassPeriod period,
+    bool isActive,
+    bool isPast,
+    bool isNext,
+    int nowMinutes,
+    CourseEntry? course,
+  ) {
+    Color dotColor;
+    Color cardBg;
+    Color borderColor;
+    Color titleColor;
+    Color timeColor;
+
+    if (isActive) {
+      dotColor = const Color(0xFF07C160);
+      cardBg = const Color(0xFF07C160).withOpacity(isDark ? 0.08 : 0.05);
+      borderColor = const Color(0xFF07C160).withOpacity(0.3);
+      titleColor = isDark ? Colors.white : const Color(0xFF1A1B30);
+      timeColor = const Color(0xFF07C160);
+    } else if (isPast) {
+      dotColor = isDark ? Colors.white18 : Colors.black12;
+      cardBg = isDark ? AppTheme.darkCard.withOpacity(0.5) : Colors.white;
+      borderColor = isDark
+          ? AppTheme.darkBorder.withOpacity(0.5)
+          : AppTheme.lightBorder.withOpacity(0.5);
+      titleColor = isDark ? Colors.white30 : Colors.black26;
+      timeColor = isDark ? Colors.white24 : Colors.black20;
+    } else if (isNext) {
+      dotColor = AppTheme.primaryDark;
+      cardBg = AppTheme.primaryDark.withOpacity(isDark ? 0.12 : 0.06);
+      borderColor = AppTheme.primaryDark.withOpacity(0.3);
+      titleColor = isDark ? Colors.white : const Color(0xFF1A1B30);
+      timeColor = AppTheme.primaryDark;
+    } else {
+      dotColor = AppTheme.primaryDark.withOpacity(0.5);
+      cardBg = isDark ? AppTheme.darkCard : Colors.white;
+      borderColor = isDark ? AppTheme.darkBorder : AppTheme.lightBorder;
+      titleColor = isDark ? const Color(0xFFCCD0FF) : const Color(0xFF2A2B40);
+      timeColor = isDark ? Colors.white45 : Colors.black38;
+    }
+
+    // 计算课程内进度（上课中时显示）
+    double? inClassProgress;
+    if (isActive) {
+      final startMin = period.startHour * 60 + period.startMinute;
+      final endMin = period.endHour * 60 + period.endMinute;
+      inClassProgress = (nowMinutes - startMin) / (endMin - startMin);
+      inClassProgress = inClassProgress.clamp(0.0, 1.0);
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: cardBg,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: borderColor),
+      ),
+      child: Column(
+        children: [
+          Padding(
+            padding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+            child: Row(
+              children: [
+                // 节次圆点
+                Container(
+                  width: 28,
+                  height: 28,
+                  decoration: BoxDecoration(
+                    color: dotColor.withOpacity(isActive || isNext ? 0.15 : 0.08),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Center(
+                    child: Text(
+                      '${period.index}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: dotColor,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        // 优先显示用户填写的课程名，否则显示节次名
+                        (course != null && course.courseName.isNotEmpty)
+                            ? course.courseName
+                            : period.name,
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight:
+                              isActive || isNext ? FontWeight.w600 : FontWeight.w500,
+                          color: titleColor,
+                        ),
+                      ),
+                      // 有教室信息时显示
+                      if (course != null && course.classroom.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Text(
+                            '📍 ${course.classroom}',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: isDark ? Colors.white38 : Colors.black38,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                Text(
+                  '${period.startTime} - ${period.endTime}',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
+                    color: timeColor,
+                  ),
+                ),
+                if (isPast) ...[
+                  const SizedBox(width: 8),
+                  Icon(Icons.check_circle_outline_rounded,
+                      size: 15,
+                      color: isDark ? Colors.white24 : Colors.black20),
+                ],
+              ],
+            ),
+          ),
+          // 课内进度条（仅上课中显示）
+          if (inClassProgress != null)
+            ClipRRect(
+              borderRadius: const BorderRadius.only(
+                bottomLeft: Radius.circular(16),
+                bottomRight: Radius.circular(16),
+              ),
+              child: LinearProgressIndicator(
+                value: inClassProgress,
+                backgroundColor: const Color(0xFF07C160).withOpacity(0.15),
+                valueColor:
+                    const AlwaysStoppedAnimation<Color>(Color(0xFF07C160)),
+                minHeight: 3,
               ),
             ),
-          ),
-          Text(
-            '${period.startTime} - ${period.endTime}',
-            style: TextStyle(
-              color: isActive
-                  ? AppTheme.primaryDark
-                  : (isDark ? Colors.white54 : Colors.black38),
-              fontSize: 13,
-            ),
-          ),
         ],
       ),
     );
