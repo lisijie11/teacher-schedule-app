@@ -1,6 +1,7 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
-import 'package:timezone/data/latest.dart' as tz;
+import 'package:timezone/data/latest.dart' as tzdata;
 
 class NotificationService {
   NotificationService._();
@@ -14,7 +15,7 @@ class NotificationService {
   static const String _channelDesc = '李老师日程提醒通知';
 
   Future<void> init() async {
-    tz.initializeTimeZones();
+    tzdata.initializeTimeZones();
     tz.setLocalLocation(tz.getLocation('Asia/Shanghai'));
 
     const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
