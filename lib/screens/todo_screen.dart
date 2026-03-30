@@ -248,7 +248,7 @@ class _TodoScreenState extends State<TodoScreen> {
             style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w700,
-              color: isDark ? Colors.white60 : Colors.black.withOpacity(0.54),
+              color: isDark ? Colors.white.withOpacity(0.60) : Colors.black.withOpacity(0.54),
             ),
           ),
           const SizedBox(width: 6),
