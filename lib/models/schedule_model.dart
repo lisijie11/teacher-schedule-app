@@ -1,6 +1,5 @@
+import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
-
-part 'schedule_model.g.dart';
 
 // 课程节次
 class ClassPeriod {
@@ -26,8 +25,7 @@ class ClassPeriod {
       '${endHour.toString().padLeft(2, '0')}:${endMinute.toString().padLeft(2, '0')}';
 
   Duration get duration => Duration(
-        minutes:
-            (endHour * 60 + endMinute) - (startHour * 60 + startMinute),
+        minutes: (endHour * 60 + endMinute) - (startHour * 60 + startMinute),
       );
 }
 
@@ -159,9 +157,6 @@ class ReminderItemAdapter extends TypeAdapter<ReminderItem> {
 }
 
 // ScheduleProvider - 管理状态
-import 'package:flutter/material.dart';
-import 'package:hive/hive.dart';
-
 class ScheduleProvider extends ChangeNotifier {
   late Box<ReminderItem> _box;
   late Box _settings;
