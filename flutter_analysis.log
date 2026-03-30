@@ -1,0 +1,22 @@
+Flutter 构建任务执行失败
+========================
+执行时间: 2026-03-30 21:00
+
+错误原因: Flutter SDK 未安装或未配置到系统 PATH
+
+检查结果:
+1. flutter 命令: 未找到
+2. FVM 命令: 未找到
+3. 常见安装位置检查: 均未找到 Flutter SDK
+
+解决建议:
+1. 安装 Flutter SDK: https://docs.flutter.dev/get-started/install
+2. 或者安装 FVM (Flutter Version Management): dart pub global activate fvm
+3. 将 Flutter 添加到系统 PATH 环境变量
+4. 重启终端/PowerShell 以使 PATH 生效
+
+Windows 快速安装步骤:
+1. 下载 Flutter SDK: https://storage.googleapis.com/flutter_infra_release/releases/stable/windows/flutter_windows_3.19.3-stable.zip
+2. 解压到 C:\flutter
+3. 添加 C:\flutter\bin 到 PATH
+4. 运行 flutter doctor 验证安装

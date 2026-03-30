@@ -1,0 +1,24 @@
+workflows:
+  android-release:
+    name: Android Release APK
+    max_build_duration: 60
+    environment:
+      flutter: 3.19.0
+      java: 17
+    scripts:
+      - name: Get dependencies
+        script: flutter pub get
+      - name: Build APK
+        script: |
+          flutter build apk --release \
+            --build-name=1.0.0 \
+            --build-number=$BUILD_NUMBER
+    artifacts:
+      - build/app/outputs/apk/release/app-release.apk
+    publishing:
+      email:
+        recipients:
+          - lisijie_ok@163.com
+        notify:
+          success: true
+          failure: true
