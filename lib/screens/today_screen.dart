@@ -222,7 +222,7 @@ class _TodayScreenState extends State<TodayScreen>
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w500,
-                        color: isDark ? Colors.white54 : Colors.black38,
+                        color: isDark ? Colors.white.withOpacity(0.54) : Colors.black.withOpacity(0.38),
                         letterSpacing: 0.3,
                       ),
                     ),
@@ -269,7 +269,7 @@ class _TodayScreenState extends State<TodayScreen>
                     child: LinearProgressIndicator(
                       value: progress,
                       backgroundColor: isDark
-                          ? Colors.white12
+                          ? Colors.white.withOpacity(0.12)
                           : AppTheme.primaryDark.withOpacity(0.1),
                       valueColor: AlwaysStoppedAnimation<Color>(
                           progress >= 1.0
@@ -284,7 +284,7 @@ class _TodayScreenState extends State<TodayScreen>
                   '$passedCount / $totalCount 节',
                   style: TextStyle(
                     fontSize: 11,
-                    color: isDark ? Colors.white38 : Colors.black38,
+                    color: isDark ? Colors.white.withOpacity(0.38) : Colors.black.withOpacity(0.38),
                     fontWeight: FontWeight.w500,
                   ),
                 ),
@@ -394,7 +394,7 @@ class _TodayScreenState extends State<TodayScreen>
                   labelSub,
                   style: TextStyle(
                     fontSize: 12,
-                    color: isDark ? Colors.white45 : Colors.black38,
+                    color: isDark ? Colors.white.withOpacity(0.45) : Colors.black.withOpacity(0.38),
                   ),
                 ),
               ],
@@ -428,13 +428,13 @@ class _TodayScreenState extends State<TodayScreen>
       titleColor = isDark ? Colors.white : const Color(0xFF1A1B30);
       timeColor = const Color(0xFF07C160);
     } else if (isPast) {
-      dotColor = isDark ? Colors.white18 : Colors.black12;
+      dotColor = isDark ? Colors.white.withOpacity(0.18) : Colors.black.withOpacity(0.12);
       cardBg = isDark ? AppTheme.darkCard.withOpacity(0.5) : Colors.white;
       borderColor = isDark
           ? AppTheme.darkBorder.withOpacity(0.5)
           : AppTheme.lightBorder.withOpacity(0.5);
-      titleColor = isDark ? Colors.white30 : Colors.black26;
-      timeColor = isDark ? Colors.white24 : Colors.black20;
+      titleColor = isDark ? Colors.white.withOpacity(0.30) : Colors.black.withOpacity(0.26);
+      timeColor = isDark ? Colors.white.withOpacity(0.24) : Colors.black.withOpacity(0.20);
     } else if (isNext) {
       dotColor = AppTheme.primaryDark;
       cardBg = AppTheme.primaryDark.withOpacity(isDark ? 0.12 : 0.06);
@@ -446,7 +446,7 @@ class _TodayScreenState extends State<TodayScreen>
       cardBg = isDark ? AppTheme.darkCard : Colors.white;
       borderColor = isDark ? AppTheme.darkBorder : AppTheme.lightBorder;
       titleColor = isDark ? const Color(0xFFCCD0FF) : const Color(0xFF2A2B40);
-      timeColor = isDark ? Colors.white45 : Colors.black38;
+      timeColor = isDark ? Colors.white.withOpacity(0.45) : Colors.black.withOpacity(0.38);
     }
 
     // 计算课程内进度（上课中时显示）
@@ -516,7 +516,7 @@ class _TodayScreenState extends State<TodayScreen>
                             '📍 ${course.classroom}',
                             style: TextStyle(
                               fontSize: 11,
-                              color: isDark ? Colors.white38 : Colors.black38,
+                              color: isDark ? Colors.white.withOpacity(0.38) : Colors.black.withOpacity(0.38),
                             ),
                           ),
                         ),
@@ -535,7 +535,7 @@ class _TodayScreenState extends State<TodayScreen>
                   const SizedBox(width: 8),
                   Icon(Icons.check_circle_outline_rounded,
                       size: 15,
-                      color: isDark ? Colors.white24 : Colors.black20),
+                      color: isDark ? Colors.white.withOpacity(0.24) : Colors.black.withOpacity(0.20)),
                 ],
               ],
             ),
