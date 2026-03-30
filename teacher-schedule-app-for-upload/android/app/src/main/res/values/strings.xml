@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">教师课表助手</string>
+    <string name="widget_description">显示今日课程状态与下节课时间</string>
+    <string name="widget_description_v5">教师课表助手（增强版）- 显示多个课程、教师信息与个性化设置</string>
+    
+    <!-- 小部件状态相关的字符串 -->
+    <string name="status_teaching">上课中</string>
+    <string name="status_upcoming">即将开始</string>
+    <string name="status_completed">已结束</string>
+    <string name="status_no_class">今日无课</string>
+    
+    <!-- 模式标签 -->
+    <string name="mode_workday">工作日</string>
+    <string name="mode_weekend">周末</string>
+    <string name="mode_holiday">假期</string>
+    
+    <!-- 位置信息 -->
+    <string name="location_foshan">佛山大部</string>
+    <string name="location_shanwei">汕尾校区</string>
+    
+    <!-- 默认文本 -->
+    <string name="default_teacher_name">李老师</string>
+    <string name="default_faculty_name">数字媒体与设计学院</string>
+    <string name="default_classroom">待定教室</string>
+    <string name="default_class_name">未指定班级</string>
+    <string name="default_course_name">未命名课程</string>
+</resources>
