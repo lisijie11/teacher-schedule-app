@@ -6,6 +6,7 @@ import 'package:timezone/data/latest.dart' as tz;
 
 import 'models/schedule_model.dart';
 import 'models/todo_model.dart';
+import 'models/course_model.dart';
 import 'services/notification_service.dart';
 import 'services/holiday_service.dart';
 import 'services/widget_service.dart';
@@ -22,8 +23,10 @@ void main() async {
   await Hive.initFlutter();
   Hive.registerAdapter(ReminderItemAdapter());
   Hive.registerAdapter(TodoItemAdapter());
+  Hive.registerAdapter(CourseEntryAdapter());
   await Hive.openBox<ReminderItem>('reminders');
   await Hive.openBox<TodoItem>('todos');
+  await Hive.openBox<CourseEntry>('courses');
   await Hive.openBox('settings');
 
   // 初始化通知服务
@@ -44,6 +47,7 @@ void main() async {
         ChangeNotifierProvider(create: (_) => ScheduleProvider()),
         ChangeNotifierProvider(create: (_) => TodoProvider()),
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
+        ChangeNotifierProvider(create: (_) => CourseProvider()),
       ],
       child: const TeacherScheduleApp(),
     ),
