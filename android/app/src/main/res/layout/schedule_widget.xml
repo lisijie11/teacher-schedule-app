@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp"
+    android:background="@drawable/widget_background">
+
+    <!-- 顶部：日期 + 模式标签 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <TextView
+            android:id="@+id/widget_date"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="3月30日 周一"
+            android:textSize="13sp"
+            android:textColor="#B0B8FF"
+            android:textStyle="normal"/>
+
+        <TextView
+            android:id="@+id/widget_mode"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="工作日"
+            android:textSize="11sp"
+            android:textColor="#6C63FF"
+            android:background="@drawable/chip_bg"
+            android:paddingLeft="8dp"
+            android:paddingRight="8dp"
+            android:paddingTop="3dp"
+            android:paddingBottom="3dp"/>
+    </LinearLayout>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="0.5dp"
+        android:layout_marginTop="8dp"
+        android:layout_marginBottom="8dp"
+        android:background="#2E3058"/>
+
+    <!-- 状态文字 -->
+    <TextView
+        android:id="@+id/widget_status"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="下节: 第3节（12分钟后）"
+        android:textSize="12sp"
+        android:textColor="#8888AA"/>
+
+    <!-- 时间大字 -->
+    <TextView
+        android:id="@+id/widget_time"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="10:25"
+        android:textSize="32sp"
+        android:textColor="#FFFFFF"
+        android:textStyle="bold"
+        android:layout_marginTop="2dp"/>
+
+</LinearLayout>
