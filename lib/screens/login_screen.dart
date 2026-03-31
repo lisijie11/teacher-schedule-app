@@ -126,7 +126,7 @@ class _LoginScreenState extends State<LoginScreen> {
     
     await box.putAll({
       'token': 'offline_token_${DateTime.now().millisecondsSinceEpoch}',
-      'userId': 'LSJ2026',
+      'userId': 'teacher001',
       'username': username,
       'expiresAt': expiresAt.toIso8601String(),
       'userRole': 'teacher',
@@ -139,14 +139,14 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       // 获取用户信息
       final box = await Hive.openBox('api_auth');
-      final username = box.get('username', defaultValue: '李思杰');
-      final userId = box.get('userId', defaultValue: 'LSJ2026');
+      final username = box.get('username', defaultValue: '老师');
+      final userId = box.get('userId', defaultValue: 'teacher001');
       final userRole = box.get('userRole', defaultValue: '教师');
       
       // 更新小组件，传递用户信息
       await WidgetService.updateWidgetWithUserInfo(
         userName: username,
-        facultyName: userId == 'LSJ2026' ? '数字媒体与设计学院' : null,
+        facultyName: null,
       );
     } catch (e) {
       // 小组件更新失败不影响主流程
@@ -163,14 +163,14 @@ class _LoginScreenState extends State<LoginScreen> {
 
   void _testDemoLogin() async {
     setState(() {
-      _usernameController.text = 'lisijie';
+      _usernameController.text = 'demo';
       _passwordController.text = 'demo123';
       _isLoading = true;
       _errorMessage = '';
     });
 
     // 直接使用离线模式登录
-    _offlineLogin('lisijie');
+    _offlineLogin('demo');
   }
 
   @override
@@ -267,7 +267,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   const SizedBox(height: 8),
 
                   Text(
-                    '广东东软学院专用',
+                    '教师专属日程管理',
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w500,
@@ -464,7 +464,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         // 版本信息
                         Center(
                           child: Text(
-                            '版本 2.0.0 • 广东东软学院数字媒体与设计学院',
+                            '版本 2.0.0 • 教师日程助手',
                             style: TextStyle(
                               color: AppTheme.lightText.withOpacity(0.6),
                               fontSize: 13,
@@ -557,7 +557,7 @@ class HomePageWrapper extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          '李思杰 老师',
+                          '老师 您好',
                           style: TextStyle(
                             fontSize: 20,
                             fontWeight: FontWeight.w700,
@@ -566,7 +566,7 @@ class HomePageWrapper extends StatelessWidget {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          '数字媒体与设计学院 • 广东东软学院',
+                          '教师专属',
                           style: TextStyle(
                             fontSize: 14,
                             color: AppTheme.lightText,

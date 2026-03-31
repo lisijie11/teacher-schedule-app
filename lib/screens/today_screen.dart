@@ -246,14 +246,14 @@ class _TodayScreenState extends State<TodayScreen>
   }
 
   Widget _buildWelcomeCard(BuildContext context, bool isDark) {
-    final facultyName = widget.facultyName ?? '广东东软学院';
+    final facultyName = widget.facultyName ?? '教师专属';
     final nowHour = _now.hour;
     String greeting;
     
     if (nowHour < 6) {
       greeting = '黎明拂晓，精神饱满';
     } else if (nowHour < 12) {
-      greeting = '早上好，李老师';
+      greeting = '早上好，老师';
     } else if (nowHour < 14) {
       greeting = '中午好，午间时光';
     } else if (nowHour < 18) {

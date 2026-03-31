@@ -38,9 +38,9 @@ class ScheduleWidgetV5 : AppWidgetProvider() {
                 val prefs = getWidgetPrefs(context)
 
                 // 1. 获取用户信息
-                val userName = prefs.getString("${USER_INFO_PREFIX}name", "李老师") ?: "李老师"
-                val facultyName = prefs.getString("${USER_INFO_PREFIX}faculty", "数字媒体与设计学院") ?: "数字媒体与设计学院"
-                val userAvatar = prefs.getString("${USER_INFO_PREFIX}avatar", "李") ?: "李"
+                val userName = prefs.getString("${USER_INFO_PREFIX}name", "老师") ?: "老师"
+                val facultyName = prefs.getString("${USER_INFO_PREFIX}faculty", "教师") ?: "教师"
+                val userAvatar = prefs.getString("${USER_INFO_PREFIX}avatar", "老") ?: "老"
                 val locationMode = prefs.getString("${USER_INFO_PREFIX}location", "佛山大部") ?: "佛山大部"
 
                 // 2. 获取日期和模式信息

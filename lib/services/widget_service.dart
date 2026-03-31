@@ -72,9 +72,9 @@ class WidgetService {
       }
 
       // 2. 用户信息和设置
-      final effectiveUserName = userName ?? userInfo?['name'] ?? '李老师';
-      final effectiveFacultyName = facultyName ?? userInfo?['faculty'] ?? '数字媒体与设计学院';
-      final userAvatar = effectiveUserName.isNotEmpty ? effectiveUserName[0] : '李';
+      final effectiveUserName = userName ?? userInfo?['name'] ?? '老师';
+      final effectiveFacultyName = facultyName ?? userInfo?['faculty'] ?? '教师';
+      final userAvatar = effectiveUserName.isNotEmpty ? effectiveUserName[0] : '老';
       
       // 默认设置
       final defaultSettings = {

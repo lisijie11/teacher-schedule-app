@@ -20,8 +20,8 @@
     <string name="location_shanwei">汕尾校区</string>
     
     <!-- 默认文本 -->
-    <string name="default_teacher_name">李老师</string>
-    <string name="default_faculty_name">数字媒体与设计学院</string>
+    <string name="default_teacher_name">老师</string>
+    <string name="default_faculty_name">教师</string>
     <string name="default_classroom">待定教室</string>
     <string name="default_class_name">未指定班级</string>
     <string name="default_course_name">未命名课程</string>

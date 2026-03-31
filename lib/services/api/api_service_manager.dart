@@ -154,7 +154,7 @@ class ApiServiceManager {
         userId: _currentLogin!.userId,
         username: _currentLogin!.username,
         realName: _currentLogin!.username, // 暂时使用用户名作为真实姓名
-        department: '数字媒体与设计学院', // 默认部门
+        department: '教师', // 默认部门
         roles: [_currentLogin!.userRole],
         lastLoginAt: DateTime.now(),
       );

@@ -9,7 +9,7 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
 
     <application
-        android:label="李老师日程"
+        android:label="教师课表助手"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:allowBackup="false"
@@ -35,7 +35,7 @@
         <!-- 桌面小组件 v4（兼容旧版） -->
         <receiver android:name=".ScheduleWidget"
             android:exported="true"
-            android:label="李老师日程小组件">
+            android:label="教师日程小组件">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
                 <action android:name="android.appwidget.action.APPWIDGET_ENABLED"/>

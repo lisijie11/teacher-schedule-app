@@ -98,8 +98,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _settingTile(
             isDark,
             icon: Icons.person,
-            title: '李思杰老师专属日程',
-            subtitle: '广东东软学院 × 数字媒体与设计学院',
+            title: '教师专属日程助手',
+            subtitle: '支持课表管理、提醒通知、桌面小组件',
           ),
           _settingTile(
             isDark,

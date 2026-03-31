@@ -34,7 +34,7 @@ enum ScheduleMode { weekday, weekend }
 
 // 预设作息表
 class SchedulePresets {
-  // 周一到周五：广东东软学院
+  // 周一到周五作息
   static const List<ClassPeriod> weekdayPeriods = [
     ClassPeriod(
         index: 1, name: '第1节', startHour: 8, startMinute: 30, endHour: 9, endMinute: 15),
@@ -54,7 +54,7 @@ class SchedulePresets {
         index: 8, name: '第8节', startHour: 16, startMinute: 45, endHour: 17, endMinute: 30),
   ];
 
-  // 周六到周日：另一学校
+  // 周六到周日作息
   static const List<ClassPeriod> weekendPeriods = [
     ClassPeriod(
         index: 1, name: '第1-2节', startHour: 8, startMinute: 0, endHour: 9, endMinute: 40),
@@ -71,7 +71,7 @@ class SchedulePresets {
   }
 
   static String getModeLabel(ScheduleMode mode) {
-    return mode == ScheduleMode.weekday ? '东软学院（工作日）' : '周末学校';
+    return mode == ScheduleMode.weekday ? '工作日作息' : '周末作息';
   }
 
   static String getModeShortLabel(ScheduleMode mode) {

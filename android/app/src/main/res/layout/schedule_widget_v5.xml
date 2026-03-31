@@ -67,7 +67,7 @@
                 android:id="@+id/faculty_name"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="数字媒体与设计学院"
+                android:text="教师"
                 android:textSize="10sp"
                 android:textColor="#8B94AA"
                 android:maxLines="1"
