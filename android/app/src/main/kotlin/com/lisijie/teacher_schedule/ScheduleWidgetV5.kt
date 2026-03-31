@@ -6,6 +6,7 @@ import android.appwidget.AppWidgetProvider
 import android.content.Context
 import android.content.SharedPreferences
 import android.content.Intent
+import android.view.View
 import android.os.Build
 import androidx.core.graphics.ColorUtils
 import android.widget.RemoteViews
@@ -125,9 +126,9 @@ class ScheduleWidgetV5 : AppWidgetProvider() {
                 
                 if (showFaculty) {
                     views.setTextViewText(R.id.faculty_name, facultyName)
-                    views.setViewVisibility(R.id.faculty_name, RemoteViews.VISIBLE)
+                    views.setViewVisibility(R.id.faculty_name, View.VISIBLE)
                 } else {
-                    views.setViewVisibility(R.id.faculty_name, RemoteViews.GONE)
+                    views.setViewVisibility(R.id.faculty_name, View.GONE)
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "更新用户信息失败", e)
@@ -178,22 +179,26 @@ class ScheduleWidgetV5 : AppWidgetProvider() {
         ) {
             try {
                 val courseItems = listOf(
-                    R.id.course_item_1 to R.id.course_time_1 to R.id.course_name_1 to R.id.course_location_1 to R.id.course_class_1 to R.id.course_status_1,
-                    R.id.course_item_2 to R.id.course_time_2 to R.id.course_name_2 to R.id.course_location_2 to R.id.course_class_2 to R.id.course_status_2,
-                    R.id.course_item_3 to R.id.course_time_3 to R.id.course_name_3 to R.id.course_location_3 to R.id.course_class_3 to R.id.course_status_3
+                    listOf(R.id.course_item_1, R.id.course_time_1, R.id.course_name_1, R.id.course_location_1, R.id.course_class_1, R.id.course_status_1),
+                    listOf(R.id.course_item_2, R.id.course_time_2, R.id.course_name_2, R.id.course_location_2, R.id.course_class_2, R.id.course_status_2),
+                    listOf(R.id.course_item_3, R.id.course_time_3, R.id.course_name_3, R.id.course_location_3, R.id.course_class_3, R.id.course_status_3)
                 )
 
                 // 显示前maxCourses个课程
                 val coursesToShow = courses.take(minOf(maxCourses, 3))
                 
-                courseItems.forEachIndexed { index, item ->
-                    val (container, timeId, nameId, locationId, classId, statusId) = item
-                    
+                courseItems.forEachIndexed { index, ids ->
+                    val container = ids[0]
                     if (index < coursesToShow.size) {
                         val course = coursesToShow[index]
+                        val timeId = ids[1]
+                        val nameId = ids[2]
+                        val locationId = ids[3]
+                        val classId = ids[4]
+                        val statusId = ids[5]
                         
                         // 显示容器
-                        views.setViewVisibility(container, RemoteViews.VISIBLE)
+                        views.setViewVisibility(container, View.VISIBLE)
                         
                         // 设置课程信息
                         views.setTextViewText(timeId, course.time)
@@ -212,12 +217,12 @@ class ScheduleWidgetV5 : AppWidgetProvider() {
                         
                         // 如果当前课程，增加亮度
                         if (course.isCurrent) {
-                            val highlightedColor = ColorUtils.blendARGB(statusColor, 0xFFFFFFFF, 0.2f)
+                            val highlightedColor = ColorUtils.blendARGB(statusColor, 0xFFFFFFFF.toInt(), 0.2f)
                             views.setInt(statusId, "setBackgroundColor", highlightedColor)
                         }
                     } else {
                         // 隐藏未使用的课程项
-                        views.setViewVisibility(container, RemoteViews.GONE)
+                        views.setViewVisibility(container, View.GONE)
                     }
                 }
             } catch (e: Exception) {
@@ -291,12 +296,12 @@ class ScheduleWidgetV5 : AppWidgetProvider() {
                 }
 
                 // 2. 点击用户头像打开设置
-                val settingsIntent = Intent(context, context.packageManager
-                    .getLaunchIntentForPackage(context.packageName)?.component)
-                    .apply {
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                        putExtra("navigate_to", "settings_screen")
-                    }
+                val settingsIntent = Intent(Intent.ACTION_MAIN).apply {
+                    setPackage(context.packageName)
+                    addCategory(Intent.CATEGORY_LAUNCHER)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    putExtra("navigate_to", "settings_screen")
+                }
                 
                 val settingsPi = PendingIntent.getActivity(
                     context,

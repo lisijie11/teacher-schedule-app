@@ -14,20 +14,20 @@ class ApiResponse<T> {
     required T this.data,
     String? this.message,
     int? this.statusCode,
-    DateTime? this.timestamp,
+    DateTime? timestamp,
   })  : success = true,
         error = null,
-        timestamp = timestamp ?? DateTime.now();
+        this.timestamp = timestamp ?? DateTime.now();
 
   /// 失败的响应
   ApiResponse.error({
     String? this.error,
     int? this.statusCode,
     String? this.message,
-    DateTime? this.timestamp,
+    DateTime? timestamp,
   })  : success = false,
         data = null,
-        timestamp = timestamp ?? DateTime.now();
+        this.timestamp = timestamp ?? DateTime.now();
 
   /// 从 JSON 创建响应（用于反序列化）
   factory ApiResponse.fromJson(

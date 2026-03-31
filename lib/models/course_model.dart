@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
+import 'schedule_model.dart' show SchedulePresets, ClassPeriod;
 
 /// 课程条目 —— 对应某节次在某天的课程信息
 /// 用户可以手动为每个节次填写课程名称、地点、备注
@@ -49,6 +50,33 @@ class CourseEntry extends HiveObject {
   ];
 
   Color get color => palette[colorIndex % palette.length];
+
+  /// 获取课程开始时间（根据节次和作息模式）
+  String get startTime {
+    final periods = isWeekday
+        ? SchedulePresets.weekdayPeriods
+        : SchedulePresets.weekendPeriods;
+    final period = periods.firstWhere(
+      (p) => p.index == periodIndex,
+      orElse: () => const ClassPeriod(index: 1, name: '第1节', startHour: 8, startMinute: 30, endHour: 9, endMinute: 15),
+    );
+    return period.startTime;
+  }
+
+  /// 获取课程结束时间
+  String get endTime {
+    final periods = isWeekday
+        ? SchedulePresets.weekdayPeriods
+        : SchedulePresets.weekendPeriods;
+    final period = periods.firstWhere(
+      (p) => p.index == periodIndex,
+      orElse: () => const ClassPeriod(index: 1, name: '第1节', startHour: 8, startMinute: 30, endHour: 9, endMinute: 15),
+    );
+    return period.endTime;
+  }
+
+  /// 班级名称（备注作为班级）
+  String get className => note ?? '未指定班级';
 }
 
 /// Hive 适配器（手动生成，避免依赖 build_runner）

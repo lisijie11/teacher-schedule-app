@@ -2,9 +2,9 @@
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
     android:minWidth="220dp"
     android:minHeight="180dp"
-    android:updatePeriodMillis="1800000" <!-- 30分钟更新一次 -->
+    android:updatePeriodMillis="1800000"
     android:initialLayout="@layout/schedule_widget_v5"
-    android:previewImage="@drawable/widget_preview" <!-- 需要创建预览图 -->
+    android:previewImage="@drawable/widget_preview"
     android:resizeMode="horizontal|vertical"
     android:widgetCategory="home_screen|keyguard"
     android:initialKeyguardLayout="@layout/schedule_widget_v5"

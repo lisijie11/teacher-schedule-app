@@ -4,93 +4,16 @@
     android:height="200dp"
     android:viewportWidth="200"
     android:viewportHeight="200">
-    
     <!-- 背景 -->
     <path
         android:pathData="M0,0 L200,0 L200,200 L0,200 Z"
         android:fillColor="#0A1430"/>
-        
-    <!-- 渐变装饰 -->
+    <!-- 装饰圆 -->
     <path
-        android:pathData="M0,0 L200,0 L200,60 C150,80 100,70 50,40 Q0,20 0,0 Z"
-        android:fillColor="#1E2A4A"/>
-        
-    <!-- 时间圆 -->
-    <circle
-        android:cx="60"
-        android:cy="120"
-        android:r="25"
-        android:fillColor="#6C63FF"
-        android:fillType="evenOdd"/>
-        
-    <text
-        android:text="09"
-        android:fontFamily="sans-serif-condensed-medium"
-        android:textSize="20"
-        android:textColor="#FFFFFF"
-        android:gravity="center"
-        android:textAlignment="center"
-        android:x="40"
-        android:y="120"/>
-        
-    <text
-        android:text=":00"
-        android:fontFamily="sans-serif-condensed-medium"
-        android:textSize="15"
-        android:textColor="#FFFFFF"
-        android:gravity="center"
-        android:textAlignment="center"
-        android:x="84"
-        android:y="120"/>
-        
-    <!-- 课程名称 -->
-    <text
-        android:text="数字合成技术"
-        android:fontFamily="sans-serif"
-        android:textSize="18"
-        android:textColor="#FFFFFF"
-        android:gravity="start"
-        android:textAlignment="textStart"
-        android:x="100"
-        android:y="110"/>
-        
-    <!-- 教室信息 -->
-    <text
-        android:text="A-201 · 软工2101班"
-        android:fontFamily="sans-serif"
-        android:textSize="14"
-        android:textColor="#8B94AA"
-        android:gravity="start"
-        android:textAlignment="textStart"
-        android:x="100"
-        android:y="140"/>
-        
-    <!-- 用户头像 -->
-    <circle
-        android:cx="30"
-        android:cy="40"
-        android:r="15"
-        android:fillColor="#4A90E2"/>
-        
-    <text
-        android:text="李"
-        android:fontFamily="sans-serif-medium"
-        android:textSize="16"
-        android:textColor="#FFFFFF"
-        android:gravity="center"
-        android:textAlignment="center"
-        android:x="30"
-        android:y="45"/>
-        
-    <!-- 日期 -->
-    <text
-        android:text="3月30日"
-        android:fontFamily="sans-serif"
-        android:textSize="14"
-        android:textColor="#8B94AA"
-        android:gravity="end"
-        android:textAlignment="textEnd"
-        android:x="170"
-        android:y="50"/>
-        
+        android:pathData="M100,60 m-40,0 a40,40 0 1,1 80,0 a40,40 0 1,1 -80,0"
+        android:fillColor="#6C63FF"/>
+    <!-- 文字 -->
+    <path
+        android:pathData="M85,105 L115,105 L115,125 L85,125 Z"
+        android:fillColor="#FFFFFF"/>
 </vector>

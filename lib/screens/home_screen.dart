@@ -170,8 +170,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             ),
             child: NavigationBar(
               backgroundColor: isDark 
-                ? AppTheme.darkNavBackground 
-                : AppTheme.lightNavBackground,
+                ? AppTheme.darkBg1 
+                : AppTheme.lightBg0,
               elevation: 0,
               height: 66,
               selectedIndex: _currentIndex,
@@ -233,9 +233,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 ),
                 NavigationDestination(
                   tooltip: '设置',
-                  icon: AnimatedIcon(
-                    icon: AnimatedIcons.settings_menu,
-                    progress: _slideController,
+                  icon: Icon(
+                    Icons.settings_outlined,
                     color: _currentIndex == 3 
                       ? AppTheme.primaryDark 
                       : (isDark ? Colors.white70 : Colors.black54),

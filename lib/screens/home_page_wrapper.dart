@@ -16,7 +16,7 @@ class HomePageWrapper extends StatefulWidget {
 }
 
 class _HomePageWrapperState extends State<HomePageWrapper> {
-  final ApiServiceManager _apiService = ApiServiceManager.instance;
+  final ApiServiceManager _apiService = ApiServiceManager();
 
   @override
   Widget build(BuildContext context) {

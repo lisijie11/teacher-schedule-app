@@ -207,4 +207,30 @@ class ApiServiceManager {
       _apiClient.setAuth(_currentLogin!.token, _currentLogin!.userId);
     }
   }
+
+  /// 获取用户信息（用于界面显示）
+  Map<String, dynamic>? get userInfo {
+    if (_currentUser != null) {
+      return {
+        'name': _currentUser!.realName,
+        'facultyName': _currentUser!.department,
+        'avatar': _currentUser!.realName.isNotEmpty ? _currentUser!.realName[0] : 'U',
+      };
+    }
+    return null;
+  }
+
+  /// 检查本地是否有有效认证
+  Future<bool> hasValidLocalAuth() async {
+    try {
+      final box = Hive.box('api_auth');
+      final token = box.get('token') as String?;
+      final expiresAtStr = box.get('expiresAt') as String?;
+      if (token != null && expiresAtStr != null) {
+        final expiresAt = DateTime.parse(expiresAtStr);
+        return DateTime.now().isBefore(expiresAt);
+      }
+    } catch (_) {}
+    return false;
+  }
 }

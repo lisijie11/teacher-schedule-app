@@ -101,7 +101,7 @@ class _AppWrapperState extends State<AppWrapper> {
 
   Future<void> _checkAuthStatus() async {
     // 检查本地认证状态
-    final apiService = ApiServiceManager.instance;
+    final apiService = ApiServiceManager();
     final hasValidAuth = await apiService.hasValidLocalAuth();
     
     setState(() {

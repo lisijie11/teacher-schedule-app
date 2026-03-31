@@ -6,7 +6,9 @@ import '../models/course_model.dart';
 import '../services/notification_service.dart';
 
 class ScheduleScreen extends StatefulWidget {
-  const ScheduleScreen({super.key});
+  final dynamic userInfo;
+
+  const ScheduleScreen({super.key, this.userInfo});
 
   @override
   State<ScheduleScreen> createState() => _ScheduleScreenState();

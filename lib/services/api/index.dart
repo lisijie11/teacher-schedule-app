@@ -3,7 +3,6 @@
 
 // 客户端和响应类
 export 'api_client.dart';
-export 'enhanced_api_client.dart';
 export 'api_response.dart';
 export 'api_exceptions.dart';
 
