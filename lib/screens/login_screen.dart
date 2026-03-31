@@ -70,7 +70,7 @@ class _LoginScreenState extends State<LoginScreen> {
       final password = _passwordController.text.trim();
 
       // 演示账号登录（离线模式）
-      if (username == 'lisijie' && password == 'demo123') {
+      if (username == 'demo' && password == 'demo123') {
         _offlineLogin(username);
         return;
       }
@@ -97,11 +97,11 @@ class _LoginScreenState extends State<LoginScreen> {
       final username = _usernameController.text.trim();
       final password = _passwordController.text.trim();
       
-      if (username == 'lisijie' && password == 'demo123') {
+      if (username == 'demo' && password == 'demo123') {
         _offlineLogin(username);
       } else {
         setState(() {
-          _errorMessage = '网络连接失败，请检查网络设置或使用演示账号登录 (lisijie / demo123)';
+          _errorMessage = '网络连接失败，请检查网络设置或使用演示账号登录 (demo / demo123)';
           _isLoading = false;
         });
         print('登录异常: $e');

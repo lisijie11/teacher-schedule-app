@@ -1,169 +1,80 @@
 #!/usr/bin/env python3
-"""
-简易的API模拟服务器
-用于本地开发和测试
-"""
+"""简易 API 模拟服务器 - 通用演示用"""
 
-import json
-import random
-from http.server import HTTPServer, BaseHTTPRequestHandler
-from datetime import datetime, timedelta
+from flask import Flask, jsonify, request
 
-class SimpleAPIHandler(BaseHTTPRequestHandler):
-    def _set_headers(self, status=200):
-        self.send_response(status)
-        self.send_header('Content-type', 'application/json')
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
-        self.end_headers()
-    
-    def do_OPTIONS(self):
-        self._set_headers(200)
-    
-    def do_GET(self):
-        if self.path == '/api/health':
-            self._set_headers(200)
-            response = {
-                'healthy': True,
-                'message': 'API服务器正常运行',
-                'timestamp': datetime.now().isoformat()
+app = Flask(__name__)
+
+# 默认用户数据（演示用）
+MOCK_USER = {
+    'userId': 'demo001',
+    'username': '演示用户',
+    'role': '教师',
+}
+
+MOCK_COURSES = [
+    {
+        'courseId': 'demo001',
+        'courseName': '示例课程A',
+        'location': '教学楼101',
+        'teacher': '教师A',
+        'dayOfWeek': 1,
+        'startSection': 1,
+        'endSection': 2,
+        'weekType': 'all',
+        'color': '#4A90D9',
+    },
+    {
+        'courseId': 'demo002',
+        'courseName': '示例课程B',
+        'location': '教学楼202',
+        'teacher': '教师B',
+        'dayOfWeek': 3,
+        'startSection': 3,
+        'endSection': 4,
+        'weekType': 'odd',
+        'color': '#50C878',
+    },
+]
+
+@app.route('/api/auth/login', methods=['POST'])
+def login():
+    """登录接口"""
+    data = request.get_json() or {}
+    username = data.get('username', '')
+    password = data.get('password', '')
+
+    if username and password:
+        return jsonify({
+            'code': 0,
+            'message': '登录成功',
+            'data': {
+                'token': 'mock_token_123456',
+                'user': MOCK_USER.copy(),
             }
-            self.wfile.write(json.dumps(response).encode())
-        
-        elif self.path == '/api/teacher/schedule':
-            self._set_headers(200)
-            response = {
-                'success': True,
-                'schedule': self._generate_courses(),
-                'message': '获取课表成功',
-                'timestamp': datetime.now().isoformat()
-            }
-            self.wfile.write(json.dumps(response).encode())
-        
-        else:
-            self._set_headers(404)
-            response = {'error': '接口不存在'}
-            self.wfile.write(json.dumps(response).encode())
-    
-    def do_POST(self):
-        if self.path == '/api/auth/login':
-            content_length = int(self.headers['Content-Length'])
-            post_data = self.rfile.read(content_length)
-            data = json.loads(post_data.decode('utf-8'))
-            
-            username = data.get('username', '')
-            password = data.get('password', '')
-            
-            # 简单的模拟认证
-            if username == 'lisijie' and password in ['demo123', 'password123']:
-                token = f"mock_token_{random.randint(10000, 99999)}"
-                expires_at = datetime.now() + timedelta(hours=2)
-                
-                response = {
-                    'success': True,
-                    'token': token,
-                    'userId': 'LSJ2026',
-                    'username': '李思杰',
-                    'userRole': 'teacher',
-                    'expiresAt': expires_at.isoformat(),
-                    'message': '登录成功'
-                }
-                self._set_headers(200)
-            else:
-                response = {
-                    'success': False,
-                    'error': '用户名或密码错误',
-                    'message': '认证失败'
-                }
-                self._set_headers(401)
-            
-            self.wfile.write(json.dumps(response).encode())
-        
-        else:
-            self._set_headers(404)
-            response = {'error': '接口不存在'}
-            self.wfile.write(json.dumps(response).encode())
-    
-    def _generate_courses(self):
-        """生成模拟课程数据"""
-        courses = []
-        
-        # 周一课程
-        courses.append({
-            'id': 'COURSE001',
-            'courseId': 'DM101',
-            'courseName': '数字合成技术（AE）',
-            'courseType': '专业必修',
-            'teacherId': 'LSJ2026',
-            'teacherName': '李思杰',
-            'weekDay': 1,
-            'weekNum': 5,
-            'periodStart': 5,
-            'periodEnd': 6,
-            'building': '信息楼',
-            'classroom': '502教室',
-            'credit': 3,
-            'studentCount': 45,
         })
-        
-        # 周二课程
-        courses.append({
-            'id': 'COURSE002',
-            'courseId': 'DM202',
-            'courseName': '数字调色（达芬奇）',
-            'courseType': '专业必修',
-            'teacherId': 'LSJ2026',
-            'teacherName': '李思杰',
-            'weekDay': 2,
-            'weekNum': 6,
-            'periodStart': 3,
-            'periodEnd': 4,
-            'building': '艺术楼',
-            'classroom': '309实验室',
-            'credit': 3,
-            'studentCount': 38,
-        })
-        
-        # 周四课程
-        courses.append({
-            'id': 'COURSE003',
-            'courseId': 'DM303',
-            'courseName': '影视综合创作',
-            'courseType': '专业选修',
-            'teacherId': 'LSJ2026',
-            'teacherName': '李思杰',
-            'weekDay': 4,
-            'weekNum': 4,
-            'periodStart': 1,
-            'periodEnd': 2,
-            'building': '综合楼',
-            'classroom': '101教室',
-            'credit': 2,
-            'studentCount': 32,
-        })
-        
-        return courses
-    
-    def log_message(self, format, *args):
-        # 减少日志输出
-        pass
+    return jsonify({'code': 1, 'message': '用户名或密码错误'})
 
-def run_server(port=5000):
-    server_address = ('', port)
-    httpd = HTTPServer(server_address, SimpleAPIHandler)
-    print(f'简易API服务器启动在 http://localhost:{port}')
-    print('支持端点:')
-    print('  GET  /api/health')
-    print('  GET  /api/teacher/schedule')
-    print('  POST /api/auth/login (用户名: lisijie, 密码: demo123)')
-    print('按 Ctrl+C 停止服务器')
-    
-    try:
-        httpd.serve_forever()
-    except KeyboardInterrupt:
-        print('\n服务器停止')
-        httpd.server_close()
+@app.route('/api/schedule/weekly', methods=['GET'])
+def get_weekly_schedule():
+    """获取周课表"""
+    return jsonify({
+        'code': 0,
+        'data': MOCK_COURSES,
+    })
+
+@app.route('/api/user/info', methods=['GET'])
+def get_user_info():
+    """获取用户信息"""
+    return jsonify({
+        'code': 0,
+        'data': MOCK_USER,
+    })
 
 if __name__ == '__main__':
-    run_server()
+    print('启动 API 模拟服务器...')
+    print('  POST /api/auth/login (用户名: demo, 密码: demo123)')
+    print('  GET  /api/schedule/weekly')
+    print('  GET  /api/user/info')
+    print('')
+    app.run(host='0.0.0.0', port=5000, debug=True)

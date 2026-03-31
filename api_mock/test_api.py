@@ -51,7 +51,7 @@ def test_teacher_courses():
 def test_weekly_schedule():
     """测试周课表接口"""
     print("=== 测试周课表接口 ===")
-    response = requests.get(f"{BASE_URL}/api/schedule/weekly?teacher_id=LSJ2024")
+    response = requests.get(f"{BASE_URL}/api/schedule/weekly?teacher_id=demo001")
     data = response.json()
     print(f"教师ID: {data.get('teacher_id')}")
     print(f"最后更新: {data.get('last_updated')}")

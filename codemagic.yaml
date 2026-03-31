@@ -18,7 +18,7 @@ workflows:
     publishing:
       email:
         recipients:
-          - lisijie_ok@163.com
+          - developer@example.com
         notify:
           success: true
           failure: true
