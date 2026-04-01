@@ -40,28 +40,22 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: PageView(
-        controller: _pageController,
-        physics: const BouncingScrollPhysics(),
-        onPageChanged: (index) {
-          setState(() => _currentIndex = index);
-        },
-        children: _screens,
-      ),
-      // 澎湃OS3 风格底部导航栏
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          color: Theme.of(context).scaffoldBackgroundColor,
-          border: Border(
-            top: BorderSide(
-              color: Theme.of(context).dividerTheme.color ?? Colors.grey.withOpacity(0.2),
-              width: 0.5,
-            ),
-          ),
+      body: SafeArea(
+        child: PageView(
+          controller: _pageController,
+          physics: const BouncingScrollPhysics(),
+          onPageChanged: (index) {
+            setState(() => _currentIndex = index);
+          },
+          children: _screens,
         ),
+      ),
+      // 沉浸式底部导航栏（完全透明）
+      bottomNavigationBar: Container(
+        color: Colors.transparent,  // 完全透明
         child: SafeArea(
           top: false,
-          child: Padding(
+          child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,

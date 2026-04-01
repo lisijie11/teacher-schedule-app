@@ -1,17 +1,22 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 import 'dart:io';
 import '../theme.dart';
 import '../models/schedule_model.dart';
 import '../models/course_model.dart';
+import '../models/todo_model.dart';
 import '../services/notification_service.dart';
 import '../services/widget_service.dart';
 import '../services/import_service.dart';
 import '../services/keep_alive_service.dart';
 import '../services/hyper_island_service.dart';
+import '../services/web_service.dart';
+import '../services/weather_service.dart';
 import 'schedule_edit_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -313,6 +318,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   });
                 },
               ),
+            ],
+          ),
+
+          const SizedBox(height: 24),
+
+          // ═══════════════════════════════════
+          // Web 广播
+          // ═══════════════════════════════════
+          _buildSectionTitle(theme, 'Web 广播'),
+          _buildCard(
+            theme,
+            children: [
+              _buildWebBroadcastTile(theme),
             ],
           ),
 
@@ -1871,6 +1889,202 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       );
     }
+  }
+
+  // ═══════════════════════════════════════════════
+  // Web 广播
+  // ═══════════════════════════════════════════════
+  Widget _buildWebBroadcastTile(ThemeData theme) {
+    return StatefulBuilder(
+      builder: (context, setStateLocal) {
+        final isRunning = WebService.instance.isRunning;
+        final serverUrl = WebService.instance.serverUrl;
+
+        return Column(
+          children: [
+            // 开关行
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: isRunning
+                          ? AppTheme.accentGreen.withOpacity(0.1)
+                          : theme.colorScheme.primary.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      isRunning ? Icons.wifi : Icons.wifi_off_rounded,
+                      color: isRunning ? AppTheme.accentGreen : theme.colorScheme.primary,
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('开启 Web 看板', style: theme.textTheme.bodyLarge),
+                        const SizedBox(height: 2),
+                        Text(
+                          isRunning ? '服务运行中，可扫码访问' : '点击开启，生成访问二维码',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: isRunning ? AppTheme.accentGreen : null,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Switch(
+                    value: isRunning,
+                    onChanged: (value) async {
+                      if (value) {
+                        // 启动服务
+                        final courseProvider = context.read<CourseProvider>();
+                        final todoProvider = context.read<TodoProvider>();
+                        // 更新用户信息
+                        WebService.instance.updateUserInfo(_userName, _userAvatarPath);
+                        // 更新课程和待办数据
+                        WebService.instance.updateData(
+                          courseProvider.all,
+                          todoProvider.todos,
+                        );
+                        final success = await WebService.instance.startServer();
+                        if (success) {
+                          // 启动后更新数据
+                          WebService.instance.updateUserInfo(_userName, _userAvatarPath);
+                          WebService.instance.updateData(
+                            courseProvider.all,
+                            todoProvider.todos,
+                          );
+                          // 获取天气数据
+                          await WeatherService.instance.fetchWeather();
+                        }
+                        setStateLocal(() {});
+                        if (success && mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Row(
+                                children: [
+                                  const Icon(Icons.check_circle_rounded, color: Colors.white, size: 18),
+                                  const SizedBox(width: 8),
+                                  const Text('Web 看板已开启'),
+                                ],
+                              ),
+                              backgroundColor: AppTheme.accentGreen,
+                            ),
+                          );
+                        }
+                      } else {
+                        // 停止服务
+                        await WebService.instance.stopServer();
+                        setStateLocal(() {});
+                      }
+                    },
+                  ),
+                ],
+              ),
+            ),
+
+            // 运行状态下显示二维码和地址
+            if (isRunning && serverUrl != null) ...[
+              _buildDivider(Theme.of(context).brightness == Brightness.dark),
+              // 二维码
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  children: [
+                    // 二维码
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.05),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: QrImageView(
+                        data: serverUrl,
+                        version: QrVersions.auto,
+                        size: 160,
+                        backgroundColor: Colors.white,
+                        errorCorrectionLevel: QrErrorCorrectLevel.M,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    // 地址
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              serverUrl,
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                                color: theme.colorScheme.primary,
+                                fontFamily: 'monospace',
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          GestureDetector(
+                            onTap: () {
+                              Clipboard.setData(ClipboardData(text: serverUrl));
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('✓ 地址已复制'),
+                                  duration: Duration(seconds: 1),
+                                ),
+                              );
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: theme.colorScheme.primary.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Icon(
+                                Icons.copy_rounded,
+                                size: 18,
+                                color: theme.colorScheme.primary,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '在同一 WiFi 网络下，扫码或输入地址即可访问',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: Colors.grey,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        );
+      },
+    );
   }
 
   // ═══════════════════════════════════════════════

@@ -44,10 +44,23 @@ void main() async {
   // 初始化小组件自动刷新
   WidgetService.initAutoRefresh();
 
+  // 小白条沉浸式设置
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
+      // 状态栏透明
       statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.dark,  // 状态栏图标深色
+      statusBarBrightness: Brightness.light,     // 浅色状态栏背景
+      // 导航栏透明
+      systemNavigationBarColor: Colors.transparent,
+      systemNavigationBarIconBrightness: Brightness.dark,
     ),
+  );
+  
+  // 启用边缘到边缘布局
+  SystemChrome.setEnabledSystemUIMode(
+    SystemUiMode.edgeToEdge,
+    overlays: [SystemUiOverlay.top, SystemUiOverlay.bottom],
   );
 
   // 创建本地认证 box（单人本地使用，无需登录）

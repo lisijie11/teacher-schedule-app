@@ -5,6 +5,7 @@ import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import android.graphics.*
 import android.os.Bundle
 import android.util.TypedValue
@@ -135,10 +136,12 @@ object WidgetSupport {
         )
     }
 
-    fun isDarkMode(ctx: Context): Boolean = try {
-        val id = ctx.resources.getIdentifier("config_night_mode", "integer", "android")
-        if (id != 0) ctx.resources.getInteger(id) == 1 else false
-    } catch (_: Exception) { false }
+    fun isDarkMode(ctx: Context): Boolean {
+        return try {
+            val nightModeFlags = ctx.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK
+            nightModeFlags == Configuration.UI_MODE_NIGHT_YES
+        } catch (_: Exception) { false }
+    }
 
     // 主课程名
     fun heroCourseName(snapshot: WidgetSnapshot): String {

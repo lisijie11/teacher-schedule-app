@@ -43,6 +43,12 @@ dependencies:
   device_calendar: ^4.3.3
   timezone: ^0.9.4
 
+  # Web 广播服务
+  shelf: ^1.4.1
+  shelf_router: ^1.1.4
+  qr_flutter: ^4.1.0
+  network_info_plus: ^5.0.3
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
