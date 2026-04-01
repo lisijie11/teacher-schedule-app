@@ -6,79 +6,61 @@ import '../theme.dart';
 import '../models/schedule_model.dart';
 import '../models/course_model.dart';
 import '../services/holiday_service.dart';
+import '../services/notification_service.dart';
 
 class TodayScreen extends StatefulWidget {
-  final String? facultyName;
-
-  const TodayScreen({super.key, this.facultyName});
+  const TodayScreen({super.key});
 
   @override
   State<TodayScreen> createState() => _TodayScreenState();
 }
 
-class _TodayScreenState extends State<TodayScreen>
-    with TickerProviderStateMixin {
+class _TodayScreenState extends State<TodayScreen> with TickerProviderStateMixin {
   late Timer _timer;
   late DateTime _now;
-  late AnimationController _pulseCtrl;
-  late AnimationController _entryCtrl;
-  late List<Animation<double>> _cardAnimations;
+  late AnimationController _pulseController;
+  late Animation<double> _pulseAnimation;
 
   @override
   void initState() {
     super.initState();
     _now = DateTime.now();
-    
-    _pulseCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 2),
-    )..repeat(reverse: true);
-    
-    _entryCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 700),
-    );
-    
-    // 创建卡片交错动画
-    _cardAnimations = List.generate(4, (index) => 
-      Tween<double>(begin: 0, end: 1).animate(
-        CurvedAnimation(
-          parent: _entryCtrl,
-          curve: Interval(
-            0.1 + index * 0.15,
-            0.5 + index * 0.15,
-            curve: Curves.easeOutCubic,
-          ),
-        ),
-      ),
-    );
-    
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _entryCtrl.forward();
-    });
-
     _timer = Timer.periodic(const Duration(seconds: 30), (_) {
       setState(() => _now = DateTime.now());
     });
+    
+    // 脉冲动画控制器 - 用于进度条闪烁效果
+    _pulseController = AnimationController(
+      duration: const Duration(milliseconds: 1500),
+      vsync: this,
+    )..repeat(reverse: true);
+    
+    _pulseAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+    );
+
+    // 启动智能通知系统（上课前30分钟提醒 + 上课中常驻进度）
+    NotificationService.instance.startSmartNotification();
   }
 
   @override
   void dispose() {
     _timer.cancel();
-    _pulseCtrl.dispose();
-    _entryCtrl.dispose();
+    _pulseController.dispose();
+    // 停止智能通知系统
+    NotificationService.instance.stopSmartNotification();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final isWeekday = HolidayService.instance.getTodayIsWeekday();
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final todayWeekday = _now.weekday; // 1=周一，7=周日
     final dayType = HolidayService.instance.getDayType(_now);
     final holidayNote = HolidayService.instance.getHolidayNote(_now);
-    final mode = isWeekday ? ScheduleMode.weekday : ScheduleMode.weekend;
-    final periods = SchedulePresets.getPeriodsForMode(mode);
-    final modeLabel = SchedulePresets.getModeLabel(mode);
+    final periods = SchedulePresets.getPeriodsForWeekday(todayWeekday);
+    final modeLabel = SchedulePresets.getModeLabel(todayWeekday);
 
     final nowMinutes = _now.hour * 60 + _now.minute;
     ClassPeriod? currentPeriod;
@@ -96,265 +78,87 @@ class _TodayScreenState extends State<TodayScreen>
       }
     }
 
-    // 今日完成进度
     final passedCount = periods.where((p) {
       final endMin = p.endHour * 60 + p.endMinute;
       return nowMinutes >= endMin;
     }).length;
     final progress = periods.isEmpty ? 0.0 : passedCount / periods.length;
 
-    return CustomScrollView(
-      physics: const BouncingScrollPhysics(),
-      slivers: [
-        SliverToBoxAdapter(
-          child: AnimatedBuilder(
-            animation: _cardAnimations[0],
-            builder: (context, child) {
-              final animation = _cardAnimations[0];
-              return Transform.translate(
-                offset: Offset(0, (1 - animation.value) * 25),
-                child: Opacity(
-                  opacity: animation.value,
-                  child: Transform.scale(
-                    scale: 0.96 + animation.value * 0.04,
-                    child: child,
-                  ),
-                ),
-              );
-            },
-            child: _buildWelcomeCard(context, isDark),
-          ),
-        ),
-        SliverToBoxAdapter(
-          child: AnimatedBuilder(
-            animation: _cardAnimations[1],
-            builder: (context, child) {
-              final animation = _cardAnimations[1];
-              return Transform.translate(
-                offset: Offset(0, (1 - animation.value) * 25),
-                child: Opacity(
-                  opacity: animation.value,
-                  child: Transform.scale(
-                    scale: 0.96 + animation.value * 0.04,
-                    child: child,
-                  ),
-                ),
-              );
-            },
-            child: _buildHeader(
-                context, isDark, dayType, holidayNote, modeLabel,
-                passedCount, periods.length, progress),
-          ),
-        ),
-        SliverToBoxAdapter(
-          child: AnimatedBuilder(
-            animation: _cardAnimations[0],
-            builder: (context, child) {
-              final animation = _cardAnimations[0];
-              return Transform.translate(
-                offset: Offset(0, (1 - animation.value) * 30),
-                child: Opacity(
-                  opacity: animation.value,
-                  child: Transform.scale(
-                    scale: 0.95 + animation.value * 0.05,
-                    child: child,
-                  ),
-                ),
-              );
-            },
-            child: _buildStatusCard(
-                context, isDark, currentPeriod, nextPeriod, minutesToNext),
-          ),
-        ),
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 4, 20, 10),
-            child: Row(
-              children: [
-                Text(
-                  '今日课程',
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    color: isDark ? Colors.white70 : const Color(0xFF333355),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: AppTheme.primaryDark.withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    '共${periods.length}节',
-                    style: const TextStyle(
-                        fontSize: 11, color: AppTheme.primaryDark),
-                  ),
-                ),
-              ],
+    return Scaffold(
+      backgroundColor: theme.scaffoldBackgroundColor,
+      body: SafeArea(
+        child: CustomScrollView(
+          physics: const BouncingScrollPhysics(),
+          slivers: [
+            // 澎湃OS3 风格顶部
+            SliverToBoxAdapter(
+              child: _buildHeader(context, isDark, dayType, holidayNote, modeLabel, passedCount, periods.length, progress),
             ),
-          ),
-        ),
-        SliverPadding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
-          sliver: SliverList(
-            delegate: SliverChildBuilderDelegate(
-              (context, index) {
-                final period = periods[index];
-                final startMin =
-                    period.startHour * 60 + period.startMinute;
-                final endMin = period.endHour * 60 + period.endMinute;
-                final isActive =
-                    nowMinutes >= startMin && nowMinutes < endMin;
-                final isPast = nowMinutes >= endMin;
-                final isNext =
-                    !isActive && !isPast && nextPeriod?.index == period.index;
-                // 读取用户填写的课程信息
-                final courseProvider = context.watch<CourseProvider>();
-                final course =
-                    courseProvider.getEntry(isWeekday, period.index);
-
-                return AnimatedBuilder(
-                  animation: _cardAnimations[index % _cardAnimations.length],
-                  builder: (context, child) {
-                    final animation = _cardAnimations[index % _cardAnimations.length];
-                    return Transform.translate(
-                      offset: Offset(0, (1 - animation.value) * 30),
-                      child: Opacity(
-                        opacity: animation.value,
-                        child: Transform.scale(
-                          scale: 0.95 + animation.value * 0.05,
-                          child: child,
+            
+            // 状态卡片
+            SliverToBoxAdapter(
+              child: _buildStatusCard(context, isDark, currentPeriod, nextPeriod, minutesToNext),
+            ),
+            
+            // 今日课程标题
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+                child: Row(
+                  children: [
+                    Text(
+                      '今日课程',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.primary.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        '共 ${periods.length} 节',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: theme.colorScheme.primary,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            
+            // 课程列表
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 120),
+              sliver: SliverList(
+                delegate: SliverChildBuilderDelegate(
+                  (context, index) {
+                    final period = periods[index];
+                    final startMin = period.startHour * 60 + period.startMinute;
+                    final endMin = period.endHour * 60 + period.endMinute;
+                    final isActive = nowMinutes >= startMin && nowMinutes < endMin;
+                    final isPast = nowMinutes >= endMin;
+                    final isNext = !isActive && !isPast && nextPeriod?.index == period.index;
+                    
+                    final courseProvider = context.watch<CourseProvider>();
+                    final course = courseProvider.getEntry(todayWeekday, period.index);
+
+                    return _buildPeriodTile(
+                      context, isDark, period, isActive, isPast, isNext, nowMinutes, course,
                     );
                   },
-                  child: _buildPeriodTile(
-                      context, isDark, period, isActive, isPast, isNext,
-                      nowMinutes, course),
-                );
-              },
-              childCount: periods.length,
+                  childCount: periods.length,
+                ),
+              ),
             ),
-          ),
-        ),
-        const SliverToBoxAdapter(child: SizedBox(height: 110)),
-      ],
-    );
-  }
-
-  Widget _buildWelcomeCard(BuildContext context, bool isDark) {
-    final facultyName = widget.facultyName ?? '教师专属';
-    final nowHour = _now.hour;
-    String greeting;
-    
-    if (nowHour < 6) {
-      greeting = '黎明拂晓，精神饱满';
-    } else if (nowHour < 12) {
-      greeting = '早上好，老师';
-    } else if (nowHour < 14) {
-      greeting = '中午好，午间时光';
-    } else if (nowHour < 18) {
-      greeting = '下午好，继续努力';
-    } else if (nowHour < 22) {
-      greeting = '晚上好，辛勤付出';
-    } else {
-      greeting = '夜深了，注意休息';
-    }
-
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 16, 16, 12),
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(22),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            const Color(0xFF4A2DC2).withOpacity(isDark ? 0.3 : 0.2),
-            const Color(0xFF6A4BF2).withOpacity(isDark ? 0.25 : 0.15),
-            const Color(0xFF8A6DF2).withOpacity(isDark ? 0.2 : 0.1),
           ],
         ),
-        border: Border.all(
-          color: Colors.deepPurple.withOpacity(0.15),
-          width: 1,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF4A2DC2).withOpacity(isDark ? 0.2 : 0.1),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
-            spreadRadius: -4,
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.12),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                color: Colors.white.withOpacity(0.3),
-                width: 1.5,
-              ),
-            ),
-            child: Icon(
-              Icons.school,
-              color: Colors.white.withOpacity(0.9),
-              size: 24,
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  greeting,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
-                    height: 1.2,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  facultyName,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.white.withOpacity(0.8),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.08),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                color: Colors.white.withOpacity(0.2),
-                width: 0.8,
-              ),
-            ),
-            child: Text(
-              '教师端',
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w600,
-                color: Colors.white.withOpacity(0.9),
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -369,6 +173,7 @@ class _TodayScreenState extends State<TodayScreen>
     int totalCount,
     double progress,
   ) {
+    final theme = Theme.of(context);
     final weekdays = ['', '周一', '周二', '周三', '周四', '周五', '周六', '周日'];
     final dateStr = '${_now.month}月${_now.day}日  ${weekdays[_now.weekday]}';
     final timeStr = DateFormat('HH:mm').format(_now);
@@ -376,16 +181,17 @@ class _TodayScreenState extends State<TodayScreen>
     Color badgeColor;
     IconData badgeIcon;
     String badgeLabel;
+    
     if (dayType == DayType.holiday) {
-      badgeColor = const Color(0xFF07C160);
+      badgeColor = AppTheme.accentGreen;
       badgeIcon = Icons.celebration_rounded;
       badgeLabel = holidayNote ?? '假日';
     } else if (dayType == DayType.workday && _now.weekday > 5) {
       badgeColor = AppTheme.accentOrange;
       badgeIcon = Icons.work_outline_rounded;
-      badgeLabel = '调休上班';
+      badgeLabel = '调休';
     } else if (_now.weekday <= 5) {
-      badgeColor = AppTheme.primaryDark;
+      badgeColor = theme.colorScheme.primary;
       badgeIcon = Icons.school_rounded;
       badgeLabel = '工作日';
     } else {
@@ -395,16 +201,7 @@ class _TodayScreenState extends State<TodayScreen>
     }
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(24, 56, 24, 20),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: isDark
-              ? [const Color(0xFF0C0D1A), const Color(0xFF14152B)]
-              : [const Color(0xFFF0F2FF), const Color(0xFFFFFFFF)],
-        ),
-      ),
+      padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -420,45 +217,38 @@ class _TodayScreenState extends State<TodayScreen>
                       timeStr,
                       style: TextStyle(
                         fontSize: 56,
-                        fontWeight: FontWeight.w800,
-                        color: isDark ? Colors.white : const Color(0xFF1A1B30),
+                        fontWeight: FontWeight.w700,
+                        color: theme.textTheme.displayLarge?.color,
                         height: 1.0,
-                        letterSpacing: -1,
+                        letterSpacing: -2,
                       ),
                     ),
                     const SizedBox(height: 6),
                     Text(
                       dateStr,
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                        color: isDark ? Colors.white.withOpacity(0.54) : Colors.black.withOpacity(0.38),
-                        letterSpacing: 0.3,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.textTheme.bodySmall?.color,
                       ),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(width: 12),
               Container(
-                margin: const EdgeInsets.only(top: 8),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                 decoration: BoxDecoration(
-                  color: badgeColor.withOpacity(0.13),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: badgeColor.withOpacity(0.3)),
+                  color: badgeColor.withOpacity(isDark ? 0.2 : 0.1),
+                  borderRadius: BorderRadius.circular(12),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(badgeIcon, color: badgeColor, size: 14),
-                    const SizedBox(width: 5),
+                    Icon(badgeIcon, color: badgeColor, size: 16),
+                    const SizedBox(width: 6),
                     Text(
                       badgeLabel,
                       style: TextStyle(
                         color: badgeColor,
-                        fontSize: 12,
+                        fontSize: 13,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -467,10 +257,10 @@ class _TodayScreenState extends State<TodayScreen>
               ),
             ],
           ),
-
+          
           // 进度指示
           if (totalCount > 0) ...[
-            const SizedBox(height: 18),
+            const SizedBox(height: 20),
             Row(
               children: [
                 Expanded(
@@ -478,25 +268,14 @@ class _TodayScreenState extends State<TodayScreen>
                     borderRadius: BorderRadius.circular(3),
                     child: LinearProgressIndicator(
                       value: progress,
-                      backgroundColor: isDark
-                          ? Colors.white.withOpacity(0.12)
-                          : AppTheme.primaryDark.withOpacity(0.1),
-                      valueColor: AlwaysStoppedAnimation<Color>(
-                          progress >= 1.0
-                              ? AppTheme.accentTeal
-                              : AppTheme.primaryDark),
                       minHeight: 4,
                     ),
                   ),
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 12),
                 Text(
                   '$passedCount / $totalCount 节',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: isDark ? Colors.white.withOpacity(0.38) : Colors.black.withOpacity(0.38),
-                    fontWeight: FontWeight.w500,
-                  ),
+                  style: theme.textTheme.labelSmall,
                 ),
               ],
             ),
@@ -513,6 +292,7 @@ class _TodayScreenState extends State<TodayScreen>
     ClassPeriod? next,
     int? minutesToNext,
   ) {
+    final theme = Theme.of(context);
     final bool isFinished = current == null && next == null;
 
     Color accentColor;
@@ -522,81 +302,47 @@ class _TodayScreenState extends State<TodayScreen>
     String labelSub;
 
     if (current != null) {
-      accentColor = const Color(0xFF07C160);
-      accentIcon = Icons.play_circle_filled_rounded;
+      accentColor = AppTheme.accentGreen;
+      accentIcon = Icons.play_circle_rounded;
       labelTop = '● 上课中';
       labelMain = current.name;
       labelSub = '${current.startTime} — ${current.endTime}';
     } else if (next != null) {
-      accentColor = AppTheme.primaryDark;
+      accentColor = theme.colorScheme.primary;
       accentIcon = Icons.schedule_rounded;
       labelTop = '下节课';
       labelMain = next.name;
-      labelSub = '$minutesToNext 分钟后 · ${next.startTime}';
+      labelSub = '$minutesToNext 分钟后开始 · ${next.startTime}';
     } else {
       accentColor = AppTheme.accentTeal;
       accentIcon = Icons.check_circle_rounded;
       labelTop = '今日完成';
       labelMain = '好好休息';
-      labelSub = '明日继续加油 ✨';
+      labelSub = '明天继续加油 ✨';
     }
 
-    // 增强的阴影效果
-    List<BoxShadow> cardShadows = [
-      BoxShadow(
-        color: accentColor.withOpacity(isDark ? 0.15 : 0.12),
-        blurRadius: 24,
-        offset: const Offset(0, 6),
-        spreadRadius: -4,
-      ),
-      BoxShadow(
-        color: accentColor.withOpacity(isDark ? 0.08 : 0.05),
-        blurRadius: 40,
-        offset: const Offset(0, 12),
-        spreadRadius: -8,
-      ),
-    ];
-
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: isDark ? AppTheme.darkCard : Colors.white,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: accentColor.withOpacity(0.3), width: 1.2),
-        boxShadow: cardShadows,
+        color: theme.cardColor,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: isDark 
+            ? theme.colorScheme.outline.withOpacity(0.5)
+            : theme.colorScheme.outline,
+        ),
       ),
       child: Row(
         children: [
-          // 图标 + 左侧装饰条（升级版）
           Container(
-            width: 50,
-            height: 50,
+            width: 52,
+            height: 52,
             decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  accentColor.withOpacity(0.18),
-                  accentColor.withOpacity(0.08),
-                ],
-              ),
+              color: accentColor.withOpacity(isDark ? 0.2 : 0.1),
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: accentColor.withOpacity(0.25),
-                width: 1.2,
-              ),
             ),
-            child: current != null
-                ? FadeTransition(
-                    opacity: Tween<double>(begin: 0.5, end: 1.0)
-                        .animate(CurvedAnimation(
-                          parent: _pulseCtrl,
-                          curve: Curves.easeInOut,
-                        )),
-                    child: Icon(accentIcon, color: accentColor, size: 26),
-                  )
-                : Icon(accentIcon, color: accentColor, size: 26),
+            child: Icon(accentIcon, color: accentColor, size: 28),
           ),
           const SizedBox(width: 16),
           Expanded(
@@ -606,31 +352,23 @@ class _TodayScreenState extends State<TodayScreen>
                 Text(
                   labelTop,
                   style: TextStyle(
-                    fontSize: 11,
+                    fontSize: 12,
                     fontWeight: FontWeight.w700,
                     color: accentColor,
-                    letterSpacing: 0.8,
+                    letterSpacing: 0.5,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   labelMain,
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w800,
-                    color: isDark ? Colors.white : const Color(0xFF1A1B30),
-                    height: 1.15,
-                    letterSpacing: -0.3,
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
-                const SizedBox(height: 3),
+                const SizedBox(height: 2),
                 Text(
                   labelSub,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: isDark ? Colors.white.withOpacity(0.50) : Colors.black.withOpacity(0.42),
-                    letterSpacing: -0.1,
-                  ),
+                  style: theme.textTheme.bodySmall,
                 ),
               ],
             ),
@@ -650,6 +388,7 @@ class _TodayScreenState extends State<TodayScreen>
     int nowMinutes,
     CourseEntry? course,
   ) {
+    final theme = Theme.of(context);
     Color dotColor;
     Color cardBg;
     Color borderColor;
@@ -657,107 +396,68 @@ class _TodayScreenState extends State<TodayScreen>
     Color timeColor;
 
     if (isActive) {
-      dotColor = const Color(0xFF07C160);
-      cardBg = isDark
-          ? const Color(0xFF0D5F44).withOpacity(0.12)
-          : const Color(0xFF07C160).withOpacity(0.05);
-      borderColor = const Color(0xFF07C160).withOpacity(0.35);
-      titleColor = isDark ? Colors.white : const Color(0xFF1A1B30);
-      timeColor = const Color(0xFF07C160);
+      dotColor = AppTheme.accentGreen;
+      cardBg = theme.cardColor;
+      borderColor = AppTheme.accentGreen.withOpacity(0.4);
+      titleColor = theme.textTheme.bodyLarge?.color ?? Colors.white;
+      timeColor = AppTheme.accentGreen;
     } else if (isPast) {
-      dotColor = isDark ? Colors.white.withOpacity(0.18) : Colors.black.withOpacity(0.12);
-      cardBg = isDark
-          ? AppTheme.darkCard.withOpacity(0.5)
-          : Colors.white;
-      borderColor = isDark
-          ? AppTheme.darkBorder.withOpacity(0.4)
-          : AppTheme.lightBorder.withOpacity(0.5);
-      titleColor = isDark ? Colors.white.withOpacity(0.30) : Colors.black.withOpacity(0.26);
-      timeColor = isDark ? Colors.white.withOpacity(0.24) : Colors.black.withOpacity(0.20);
+      dotColor = theme.textTheme.bodySmall?.color ?? Colors.grey;
+      cardBg = theme.cardColor.withOpacity(0.6);
+      borderColor = theme.colorScheme.outline.withOpacity(0.3);
+      titleColor = theme.textTheme.bodySmall?.color ?? Colors.grey;
+      timeColor = theme.textTheme.labelSmall?.color ?? Colors.grey;
     } else if (isNext) {
-      dotColor = AppTheme.primaryDark;
-      cardBg = isDark
-          ? AppTheme.primaryDark.withOpacity(0.15)
-          : AppTheme.primaryLight.withOpacity(0.08);
-      borderColor = AppTheme.primaryDark.withOpacity(0.35);
-      titleColor = isDark ? Colors.white : const Color(0xFF1A1B30);
-      timeColor = AppTheme.primaryDark;
+      dotColor = theme.colorScheme.primary;
+      cardBg = theme.colorScheme.primary.withOpacity(isDark ? 0.12 : 0.06);
+      borderColor = theme.colorScheme.primary.withOpacity(0.4);
+      titleColor = theme.textTheme.bodyLarge?.color ?? Colors.white;
+      timeColor = theme.colorScheme.primary;
     } else {
-      dotColor = AppTheme.primaryDark.withOpacity(0.5);
-      cardBg = isDark ? AppTheme.darkCard : Colors.white;
-      borderColor = isDark ? AppTheme.darkBorder : AppTheme.lightBorder;
-      titleColor = isDark ? const Color(0xFFCCD0FF) : const Color(0xFF2A2B40);
-      timeColor = isDark ? Colors.white.withOpacity(0.45) : Colors.black.withOpacity(0.38);
+      dotColor = theme.textTheme.bodySmall?.color ?? Colors.grey;
+      cardBg = theme.cardColor;
+      borderColor = theme.colorScheme.outline.withOpacity(0.3);
+      titleColor = theme.textTheme.bodyLarge?.color ?? Colors.white;
+      timeColor = theme.textTheme.bodySmall?.color ?? Colors.grey;
     }
 
-    // 计算课程内进度（上课中时显示）
+    // 计算课程内进度
     double? inClassProgress;
+    int? remainingMinutes;
     if (isActive) {
       final startMin = period.startHour * 60 + period.startMinute;
       final endMin = period.endHour * 60 + period.endMinute;
       inClassProgress = (nowMinutes - startMin) / (endMin - startMin);
       inClassProgress = inClassProgress.clamp(0.0, 1.0);
-    }
-
-    // 阴影效果（仅对活跃卡片）
-    List<BoxShadow>? cardShadows;
-    if (isActive || isNext) {
-      cardShadows = [
-        BoxShadow(
-          color: dotColor.withOpacity(isDark ? 0.15 : 0.12),
-          blurRadius: 20,
-          offset: const Offset(0, 4),
-          spreadRadius: -2,
-        ),
-        BoxShadow(
-          color: dotColor.withOpacity(isDark ? 0.08 : 0.05),
-          blurRadius: 40,
-          offset: const Offset(0, 8),
-          spreadRadius: -4,
-        ),
-      ];
+      remainingMinutes = endMin - nowMinutes;
     }
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 8),
+      margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
         color: cardBg,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: borderColor, width: isActive ? 1.3 : 1.0),
-        boxShadow: cardShadows,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: borderColor),
       ),
       child: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             child: Row(
               children: [
-                // 节次圆点（升级版）
+                // 节次圆点
                 Container(
-                  width: 30,
-                  height: 30,
+                  width: 32,
+                  height: 32,
                   decoration: BoxDecoration(
-                    gradient: isActive || isNext
-                        ? LinearGradient(
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                            colors: [
-                              dotColor.withOpacity(0.2),
-                              dotColor.withOpacity(0.1),
-                            ],
-                          )
-                        : null,
-                    color: dotColor.withOpacity(isActive || isNext ? 0.12 : 0.08),
+                    color: dotColor.withOpacity(0.15),
                     shape: BoxShape.circle,
-                    border: isActive || isNext
-                        ? Border.all(color: dotColor.withOpacity(0.4), width: 1.5)
-                        : null,
                   ),
                   child: Center(
                     child: Text(
                       '${period.index}',
                       style: TextStyle(
-                        fontSize: 13,
+                        fontSize: 14,
                         fontWeight: FontWeight.w700,
                         color: dotColor,
                       ),
@@ -765,86 +465,235 @@ class _TodayScreenState extends State<TodayScreen>
                   ),
                 ),
                 const SizedBox(width: 14),
+                
+                // 课程信息
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        // 优先显示用户填写的课程名，否则显示节次名
                         (course != null && course.courseName.isNotEmpty)
-                            ? course.courseName
-                            : period.name,
+                          ? course.courseName
+                          : period.name,
                         style: TextStyle(
                           fontSize: 16,
-                          fontWeight:
-                              isActive || isNext ? FontWeight.w700 : FontWeight.w600,
+                          fontWeight: isActive || isNext ? FontWeight.w600 : FontWeight.w500,
                           color: titleColor,
-                          letterSpacing: -0.2,
                         ),
                       ),
-                      // 有教室信息时显示
                       if (course != null && course.classroom.isNotEmpty)
                         Padding(
-                          padding: const EdgeInsets.only(top: 3),
+                          padding: const EdgeInsets.only(top: 2),
                           child: Text(
                             '📍 ${course.classroom}',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: isDark
-                                  ? Colors.white.withOpacity(0.42)
-                                  : Colors.black.withOpacity(0.38),
-                            ),
+                            style: theme.textTheme.labelSmall,
                           ),
                         ),
                     ],
                   ),
                 ),
+                
+                // 时间
                 Text(
                   '${period.startTime} - ${period.endTime}',
                   style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
+                    fontSize: 13,
+                    fontWeight: isActive ? FontWeight.w600 : FontWeight.w500,
                     color: timeColor,
-                    letterSpacing: -0.1,
                   ),
                 ),
+                
+                // 已完成标记
                 if (isPast) ...[
                   const SizedBox(width: 8),
-                  Container(
-                    padding: const EdgeInsets.all(3),
-                    decoration: BoxDecoration(
-                      color: isDark
-                          ? Colors.white.withOpacity(0.08)
-                          : Colors.black.withOpacity(0.06),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      Icons.check_rounded,
-                      size: 12,
-                      color: isDark
-                          ? Colors.white.withOpacity(0.30)
-                          : Colors.black.withOpacity(0.26),
-                    ),
+                  Icon(
+                    Icons.check_rounded,
+                    size: 18,
+                    color: timeColor.withOpacity(0.6),
                   ),
                 ],
               ],
             ),
           ),
-          // 课内进度条（仅上课中显示）
-          if (inClassProgress != null)
-            ClipRRect(
-              borderRadius: const BorderRadius.only(
-                bottomLeft: Radius.circular(17),
-                bottomRight: Radius.circular(17),
-              ),
-              child: LinearProgressIndicator(
-                value: inClassProgress,
-                backgroundColor: const Color(0xFF07C160).withOpacity(0.12),
-                valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF07C160)),
-                minHeight: 3.5,
-                borderRadius: BorderRadius.circular(2),
-              ),
+          
+          // 精美进度条 - 整条横条背景+动效
+          if (isActive)
+            _AnimatedCourseProgressBar(
+              progress: inClassProgress!,
+              remainingMinutes: remainingMinutes!,
+              isDark: isDark,
+              pulseAnimation: _pulseAnimation,
             ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 精美动效课程进度条组件
+class _AnimatedCourseProgressBar extends StatelessWidget {
+  final double progress;
+  final int remainingMinutes;
+  final bool isDark;
+  final Animation<double> pulseAnimation;
+
+  const _AnimatedCourseProgressBar({
+    required this.progress,
+    required this.remainingMinutes,
+    required this.isDark,
+    required this.pulseAnimation,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final percent = (progress * 100).round();
+    
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: const BorderRadius.only(
+          bottomLeft: Radius.circular(15),
+          bottomRight: Radius.circular(15),
+        ),
+        // 背景
+        color: AppTheme.accentGreen.withOpacity(0.08),
+      ),
+      child: Column(
+        children: [
+          // 进度条主体
+          Stack(
+            children: [
+              // 背景轨道
+              Container(
+                height: 6,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(3),
+                  color: AppTheme.accentGreen.withOpacity(0.15),
+                ),
+              ),
+              
+              // 渐变进度条
+              AnimatedBuilder(
+                animation: pulseAnimation,
+                builder: (context, child) {
+                  return FractionallySizedBox(
+                    widthFactor: progress.clamp(0.0, 1.0),
+                    child: Container(
+                      height: 6,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(3),
+                        gradient: LinearGradient(
+                          colors: [
+                            AppTheme.accentGreen,
+                            AppTheme.accentGreen.withGreen(200).withBlue(220),
+                          ],
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppTheme.accentGreen.withOpacity(0.4 + pulseAnimation.value * 0.2),
+                            blurRadius: 6 + pulseAnimation.value * 4,
+                            spreadRadius: pulseAnimation.value * 2,
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+              
+              // 进度光点
+              AnimatedBuilder(
+                animation: pulseAnimation,
+                builder: (context, child) {
+                  final offset = progress.clamp(0.0, 1.0);
+                  return Positioned(
+                    left: offset * (MediaQuery.of(context).size.width - 64) - 4,
+                    top: -2,
+                    child: Container(
+                      width: 10,
+                      height: 10,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.white,
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppTheme.accentGreen.withOpacity(0.8),
+                            blurRadius: 6 + pulseAnimation.value * 4,
+                            spreadRadius: pulseAnimation.value * 2,
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
+          
+          // 底部信息栏
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
+            child: Row(
+              children: [
+                // 左侧 - 进度百分比
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: AppTheme.accentGreen.withOpacity(isDark ? 0.25 : 0.12),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    '$percent%',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.accentGreen,
+                    ),
+                  ),
+                ),
+                
+                const SizedBox(width: 8),
+                
+                // 中间 - 已过时间
+                Expanded(
+                  child: Text(
+                    '剩余 $remainingMinutes 分钟',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: isDark ? Colors.white60 : Colors.black54,
+                    ),
+                  ),
+                ),
+                
+                // 右侧 - 脉冲点动画
+                AnimatedBuilder(
+                  animation: pulseAnimation,
+                  builder: (context, child) {
+                    return Row(
+                      children: [
+                        Container(
+                          width: 6,
+                          height: 6,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: AppTheme.accentGreen.withOpacity(0.5 + pulseAnimation.value * 0.5),
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          '进行中',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                            color: AppTheme.accentGreen.withOpacity(0.8 + pulseAnimation.value * 0.2),
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );

@@ -1,28 +1,35 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">教师课表助手</string>
-    <string name="widget_description">显示今日课程状态与下节课时间</string>
-    <string name="widget_description_v5">教师课表助手（增强版）- 显示多个课程、教师信息与个性化设置</string>
-    
-    <!-- 小部件状态相关的字符串 -->
-    <string name="status_teaching">上课中</string>
-    <string name="status_upcoming">即将开始</string>
-    <string name="status_completed">已结束</string>
+
+    <!-- 小组件描述 -->
+    <string name="widget_desc_small">课表(小)</string>
+    <string name="widget_desc_medium">课表(中)</string>
+    <string name="widget_desc_large">课表(大)</string>
+    <string name="widget_desc_square">课表</string>
+
+    <!-- 小部件默认文本 -->
+    <string name="widget_default_date">点击查看课表</string>
+    <string name="widget_default_time">--:--</string>
+    <string name="widget_default_status">暂无课程</string>
+    <string name="widget_default_mode">工作日</string>
+
+    <!-- 小组件状态 -->
+    <string name="status_class_current">正在上课</string>
+    <string name="status_class_next">下节课</string>
+    <string name="status_class_ended">已结束</string>
     <string name="status_no_class">今日无课</string>
-    
-    <!-- 模式标签 -->
-    <string name="mode_workday">工作日</string>
-    <string name="mode_weekend">周末</string>
-    <string name="mode_holiday">假期</string>
-    
+    <string name="status_rest">好好休息</string>
+
+    <!-- 提醒通知 -->
+    <string name="notification_channel_class">课程提醒</string>
+    <string name="notification_channel_week">周总结</string>
+    <string name="notification_title_class">课程提醒</string>
+    <string name="notification_title_week">本周小结</string>
+
     <!-- 位置信息 -->
-    <string name="location_foshan">佛山大部</string>
-    <string name="location_shanwei">汕尾校区</string>
-    
-    <!-- 默认文本 -->
-    <string name="default_teacher_name">老师</string>
-    <string name="default_faculty_name">教师</string>
-    <string name="default_classroom">待定教室</string>
-    <string name="default_class_name">未指定班级</string>
-    <string name="default_course_name">未命名课程</string>
+    <string name="location_default">待定教室</string>
+
+    <!-- 无障碍服务描述 -->
+    <string name="accessibility_service_description">开启此服务可确保课程提醒及时送达，防止系统杀后台导致错过课程</string>
 </resources>

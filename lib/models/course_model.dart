@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
 import 'schedule_model.dart' show SchedulePresets, ClassPeriod;
+import '../services/widget_service.dart';
 
 /// 课程条目 —— 对应某节次在某天的课程信息
 /// 用户可以手动为每个节次填写课程名称、地点、备注
@@ -10,7 +11,7 @@ class CourseEntry extends HiveObject {
   String id; // 唯一 ID
 
   @HiveField(1)
-  bool isWeekday; // true = 工作日，false = 周末
+  int weekday; // 1=周一，2=周二，...，7=周日
 
   @HiveField(2)
   int periodIndex; // 对应的节次编号（1-based）
@@ -29,7 +30,7 @@ class CourseEntry extends HiveObject {
 
   CourseEntry({
     required this.id,
-    required this.isWeekday,
+    required this.weekday,
     required this.periodIndex,
     required this.courseName,
     required this.classroom,
@@ -51,9 +52,9 @@ class CourseEntry extends HiveObject {
 
   Color get color => palette[colorIndex % palette.length];
 
-  /// 获取课程开始时间（根据节次和作息模式）
+  /// 获取课程开始时间（根据节次和周几）
   String get startTime {
-    final periods = isWeekday
+    final periods = _isWeekday
         ? SchedulePresets.weekdayPeriods
         : SchedulePresets.weekendPeriods;
     final period = periods.firstWhere(
@@ -65,7 +66,7 @@ class CourseEntry extends HiveObject {
 
   /// 获取课程结束时间
   String get endTime {
-    final periods = isWeekday
+    final periods = _isWeekday
         ? SchedulePresets.weekdayPeriods
         : SchedulePresets.weekendPeriods;
     final period = periods.firstWhere(
@@ -73,6 +74,15 @@ class CourseEntry extends HiveObject {
       orElse: () => const ClassPeriod(index: 1, name: '第1节', startHour: 8, startMinute: 30, endHour: 9, endMinute: 15),
     );
     return period.endTime;
+  }
+
+  /// 检查是否工作日（周一-周五）
+  bool get _isWeekday => weekday >= 1 && weekday <= 5;
+
+  /// 获取周几的中文名称
+  String get weekdayName {
+    const names = ['', '周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+    return weekday >= 1 && weekday <= 7 ? names[weekday] : '未知';
   }
 
   /// 班级名称（备注作为班级）
@@ -87,9 +97,16 @@ class CourseEntryAdapter extends TypeAdapter<CourseEntry> {
   @override
   CourseEntry read(BinaryReader reader) {
     final fields = reader.readMap();
+    // 兼容旧数据：isWeekday (bool) -> weekday (int)
+    int weekdayValue;
+    if (fields[1] is bool) {
+      weekdayValue = (fields[1] as bool) ? 1 : 6; // true=周一，false=周六
+    } else {
+      weekdayValue = fields[1] as int? ?? 1;
+    }
     return CourseEntry(
       id: fields[0] as String,
-      isWeekday: fields[1] as bool,
+      weekday: weekdayValue,
       periodIndex: fields[2] as int,
       courseName: fields[3] as String,
       classroom: fields[4] as String? ?? '',
@@ -102,7 +119,7 @@ class CourseEntryAdapter extends TypeAdapter<CourseEntry> {
   void write(BinaryWriter writer, CourseEntry obj) {
     writer.writeMap({
       0: obj.id,
-      1: obj.isWeekday,
+      1: obj.weekday,
       2: obj.periodIndex,
       3: obj.courseName,
       4: obj.classroom,
@@ -122,11 +139,11 @@ class CourseProvider extends ChangeNotifier {
 
   List<CourseEntry> get all => _box.values.toList();
 
-  /// 获取某模式下某节次的课程（最多1个）
-  CourseEntry? getEntry(bool isWeekday, int periodIndex) {
+  /// 获取某天某节次的课程（最多1个）
+  CourseEntry? getEntry(int weekday, int periodIndex) {
     try {
       return _box.values.firstWhere(
-        (e) => e.isWeekday == isWeekday && e.periodIndex == periodIndex,
+        (e) => e.weekday == weekday && e.periodIndex == periodIndex,
       );
     } catch (_) {
       return null;
@@ -137,21 +154,27 @@ class CourseProvider extends ChangeNotifier {
   Future<void> save(CourseEntry entry) async {
     await _box.put(entry.id, entry);
     notifyListeners();
+    // 触发小组件更新
+    WidgetService.onCourseDataChanged();
   }
 
   /// 删除
   Future<void> remove(String id) async {
     await _box.delete(id);
     notifyListeners();
+    // 触发小组件更新
+    WidgetService.onCourseDataChanged();
   }
 
-  /// 清空某模式的所有课程
-  Future<void> clearMode(bool isWeekday) async {
+  /// 清空某天的所有课程
+  Future<void> clearDay(int weekday) async {
     final keys = _box.values
-        .where((e) => e.isWeekday == isWeekday)
+        .where((e) => e.weekday == weekday)
         .map((e) => e.key)
         .toList();
     await _box.deleteAll(keys);
     notifyListeners();
+    // 触发小组件更新
+    WidgetService.onCourseDataChanged();
   }
 }

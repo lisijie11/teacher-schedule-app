@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 
+    通知折叠状态布局
+    参考 mikcb 简洁设计
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:padding="12dp"
+    android:gravity="center_vertical">
+
+    <!-- 应用图标 -->
+    <ImageView
+        android:id="@+id/notification_icon"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:src="@drawable/widget_status_active"
+        android:background="@drawable/notification_icon_bg"
+        android:padding="8dp"/>
+
+    <!-- 内容区域 -->
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:layout_marginStart="12dp">
+
+        <TextView
+            android:id="@+id/notification_title"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="高等数学"
+            android:textSize="14sp"
+            android:textColor="#1E293B"
+            android:textStyle="bold"
+            android:maxLines="1"/>
+
+        <TextView
+            android:id="@+id/notification_subtitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="A301 · 剩余25分钟"
+            android:textSize="12sp"
+            android:textColor="#64748B"
+            android:layout_marginTop="2dp"/>
+    </LinearLayout>
+
+    <!-- 进度百分比 -->
+    <TextView
+        android:id="@+id/notification_progress_text"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="65%"
+        android:textSize="14sp"
+        android:textColor="#1D9BF0"
+        android:textStyle="bold"/>
+
+</LinearLayout>

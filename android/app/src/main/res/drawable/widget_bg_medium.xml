@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  小部件背景：中号 (4x2)
+  小米澎湃OS3风格：深色 + 左侧紫色装饰条
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 主背景 -->
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:type="linear"
+                android:angle="135"
+                android:startColor="#1E1E2E"
+                android:centerColor="#232335"
+                android:endColor="#1A1A2E"/>
+            <corners android:radius="18dp"/>
+        </shape>
+    </item>
+    <!-- 左侧装饰条 -->
+    <item android:left="0dp" android:top="12dp" android:bottom="12dp" android:right="0dp">
+        <shape android:shape="rectangle">
+            <solid android:color="#A78BFA"/>
+            <corners android:radius="2dp"/>
+        </shape>
+    </item>
+    <!-- 边框 -->
+    <item>
+        <shape android:shape="rectangle">
+            <stroke android:width="0.5dp" android:color="#3F3F5A"/>
+            <corners android:radius="18dp"/>
+        </shape>
+    </item>
+</layer-list>

@@ -23,138 +23,109 @@ class _TodoScreenState extends State<TodoScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     final provider = context.watch<TodoProvider>();
     final pending = provider.pending;
     final completed = provider.completed;
 
     return Scaffold(
+      backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
         title: const Text('待办'),
         actions: [
           if (completed.isNotEmpty)
             TextButton.icon(
-              onPressed: () {
-                showDialog(
-                  context: context,
-                  builder: (ctx) => AlertDialog(
-                    title: const Text('清除已完成'),
-                    content: Text('将删除 ${completed.length} 条已完成事项'),
-                    actions: [
-                      TextButton(
-                          onPressed: () => Navigator.pop(ctx),
-                          child: const Text('取消')),
-                      TextButton(
-                        onPressed: () {
-                          provider.clearCompleted();
-                          Navigator.pop(ctx);
-                        },
-                        child: const Text('确认',
-                            style: TextStyle(color: Colors.redAccent)),
-                      ),
-                    ],
-                  ),
-                );
-              },
-              icon: const Icon(Icons.delete_sweep_rounded, size: 16),
+              onPressed: () => _showClearDialog(context, provider, completed),
+              icon: const Icon(Icons.delete_sweep_rounded, size: 18),
               label: Text('清除(${completed.length})'),
               style: TextButton.styleFrom(
-                foregroundColor: Colors.redAccent,
-                padding: const EdgeInsets.symmetric(horizontal: 12),
+                foregroundColor: AppTheme.accentRed,
               ),
             ),
         ],
       ),
       body: Column(
         children: [
-          // 输入栏
-          _buildInputBar(isDark, provider),
+          // 输入栏 - 澎湃OS3风格
+          _buildInputBar(theme, isDark, provider),
 
-          // 统计行
+          // 统计行 - 优化后的进度条
           if (pending.isNotEmpty || completed.isNotEmpty)
-            _buildStatsRow(isDark, pending.length, completed.length),
+            _buildStatsRow(theme, pending.length, completed.length, isDark),
 
           // 列表
           Expanded(
             child: pending.isEmpty && completed.isEmpty
-                ? _buildEmpty(isDark)
-                : ListView(
-                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
-                    physics: const BouncingScrollPhysics(),
-                    children: [
-                      if (pending.isNotEmpty) ...[
-                        _sectionLabel(isDark, '进行中', pending.length,
-                            const Color(0xFF6C63FF)),
-                        const SizedBox(height: 6),
-                        ...pending.map((t) => _buildTodoTile(
-                            context, isDark, t, provider)),
-                        const SizedBox(height: 12),
-                      ],
-                      if (completed.isNotEmpty) ...[
-                        _sectionLabel(isDark, '已完成', completed.length,
-                            const Color(0xFF07C160)),
-                        const SizedBox(height: 6),
-                        ...completed.map((t) => _buildTodoTile(
-                            context, isDark, t, provider)),
-                      ],
-                      const SizedBox(height: 100),
+              ? _buildEmpty(theme, isDark)
+              : ListView(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
+                  physics: const BouncingScrollPhysics(),
+                  children: [
+                    if (pending.isNotEmpty) ...[
+                      _sectionLabel(theme, '进行中', pending.length, AppTheme.primaryDark),
+                      const SizedBox(height: 8),
+                      ...pending.map((t) => _buildTodoTile(context, theme, isDark, t, provider)),
+                      const SizedBox(height: 16),
                     ],
-                  ),
+                    if (completed.isNotEmpty) ...[
+                      _sectionLabel(theme, '已完成', completed.length, AppTheme.accentGreen),
+                      const SizedBox(height: 8),
+                      ...completed.map((t) => _buildTodoTile(context, theme, isDark, t, provider)),
+                    ],
+                    const SizedBox(height: 100),
+                  ],
+                ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildInputBar(bool isDark, TodoProvider provider) {
+  Widget _buildInputBar(ThemeData theme, bool isDark, TodoProvider provider) {
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
-        color: isDark ? AppTheme.darkCard : Colors.white,
-        borderRadius: BorderRadius.circular(18),
+        color: theme.cardColor,
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(
-            color: isDark ? AppTheme.darkBorder : AppTheme.lightBorder),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(isDark ? 0.2 : 0.04),
-            blurRadius: 12,
-            offset: const Offset(0, 2),
-          ),
-        ],
+          color: theme.colorScheme.outline.withOpacity(0.3),
+        ),
       ),
       child: Row(
         children: [
           Container(
-            margin: const EdgeInsets.only(left: 8),
-            width: 32,
-            height: 32,
+            width: 36,
+            height: 36,
             decoration: BoxDecoration(
-              color: AppTheme.primaryDark.withOpacity(0.1),
+              color: theme.colorScheme.primary.withOpacity(0.1),
               shape: BoxShape.circle,
             ),
-            child: const Icon(Icons.add_rounded,
-                color: AppTheme.primaryDark, size: 20),
+            child: Icon(
+              Icons.add_rounded,
+              color: theme.colorScheme.primary,
+              size: 22,
+            ),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 12),
           Expanded(
             child: TextField(
               controller: _ctrl,
               focusNode: _focusNode,
               decoration: InputDecoration(
-                hintText: '记录一件待办事项...',
+                hintText: '记录待办事项...',
                 border: InputBorder.none,
                 enabledBorder: InputBorder.none,
                 focusedBorder: InputBorder.none,
                 filled: false,
-                contentPadding:
-                    const EdgeInsets.symmetric(vertical: 12),
+                contentPadding: EdgeInsets.zero,
                 hintStyle: TextStyle(
-                  color: isDark ? Colors.white.withOpacity(0.30) : Colors.black.withOpacity(0.26),
-                  fontSize: 14,
+                  color: theme.textTheme.bodySmall?.color,
+                  fontSize: 15,
                 ),
               ),
-              style: const TextStyle(fontSize: 14),
+              style: const TextStyle(fontSize: 15),
               onSubmitted: (val) {
                 _addTodo(val, provider);
                 _focusNode.requestFocus();
@@ -164,14 +135,12 @@ class _TodoScreenState extends State<TodoScreen> {
           GestureDetector(
             onTap: () => _addTodo(_ctrl.text, provider),
             child: Container(
-              margin: const EdgeInsets.only(right: 6),
-              padding: const EdgeInsets.all(8),
+              padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: AppTheme.primaryDark,
+                color: theme.colorScheme.primary,
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: const Icon(Icons.arrow_upward_rounded,
-                  color: Colors.white, size: 18),
+              child: const Icon(Icons.arrow_upward_rounded, color: Colors.white, size: 18),
             ),
           ),
         ],
@@ -179,37 +148,37 @@ class _TodoScreenState extends State<TodoScreen> {
     );
   }
 
-  Widget _buildStatsRow(bool isDark, int pendingCount, int doneCount) {
+  // 优化后的进度条 - 渐变+动画+百分比
+  Widget _buildStatsRow(ThemeData theme, int pendingCount, int doneCount, bool isDark) {
     final total = pendingCount + doneCount;
     final progress = total == 0 ? 0.0 : doneCount / total;
+    final percent = (progress * 100).round();
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
       child: Row(
         children: [
+          // 精美的渐变进度条
           Expanded(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(3),
-              child: LinearProgressIndicator(
-                value: progress,
-                backgroundColor: isDark
-                    ? Colors.white.withOpacity(0.12)
-                    : AppTheme.primaryDark.withOpacity(0.1),
-                valueColor: AlwaysStoppedAnimation<Color>(
-                    progress >= 1.0
-                        ? const Color(0xFF07C160)
-                        : AppTheme.primaryDark),
-                minHeight: 4,
-              ),
+            child: _GradientProgressBar(
+              progress: progress,
+              isDark: isDark,
             ),
           ),
-          const SizedBox(width: 10),
-          Text(
-            '$doneCount / $total',
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: isDark ? Colors.white.withOpacity(0.45) : Colors.black.withOpacity(0.38),
+          const SizedBox(width: 12),
+          // 百分比文字
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: AppTheme.primaryDark.withOpacity(isDark ? 0.2 : 0.1),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Text(
+              '$percent%',
+              style: theme.textTheme.bodySmall?.copyWith(
+                fontWeight: FontWeight.w700,
+                color: AppTheme.primaryDark,
+              ),
             ),
           ),
         ],
@@ -228,52 +197,74 @@ class _TodoScreenState extends State<TodoScreen> {
     _ctrl.clear();
   }
 
-  Widget _sectionLabel(
-      bool isDark, String label, int count, Color color) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(2, 4, 2, 0),
-      child: Row(
-        children: [
-          Container(
-            width: 3,
-            height: 14,
-            decoration: BoxDecoration(
-              color: color,
-              borderRadius: BorderRadius.circular(2),
-            ),
+  void _showClearDialog(BuildContext context, TodoProvider provider, List<TodoItem> completed) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('清除已完成'),
+        content: Text('将删除 ${completed.length} 条已完成事项'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('取消'),
           ),
-          const SizedBox(width: 8),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              color: isDark ? Colors.white.withOpacity(0.60) : Colors.black.withOpacity(0.54),
-            ),
-          ),
-          const SizedBox(width: 6),
-          Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.12),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Text(
-              '$count',
-              style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: color),
-            ),
+          TextButton(
+            onPressed: () {
+              provider.clearCompleted();
+              Navigator.pop(ctx);
+            },
+            child: const Text('确认', style: TextStyle(color: AppTheme.accentRed)),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildTodoTile(BuildContext context, bool isDark, TodoItem todo,
-      TodoProvider provider) {
+  Widget _sectionLabel(ThemeData theme, String label, int count, Color color) {
+    return Row(
+      children: [
+        Container(
+          width: 3,
+          height: 16,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(2),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          label,
+          style: theme.textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.15),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Text(
+            '$count',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: color,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTodoTile(
+    BuildContext context,
+    ThemeData theme,
+    bool isDark,
+    TodoItem todo,
+    TodoProvider provider,
+  ) {
     return Dismissible(
       key: Key(todo.id),
       direction: DismissDirection.endToStart,
@@ -281,21 +272,21 @@ class _TodoScreenState extends State<TodoScreen> {
         alignment: Alignment.centerRight,
         padding: const EdgeInsets.only(right: 20),
         decoration: BoxDecoration(
-          color: Colors.redAccent,
+          color: AppTheme.accentRed,
           borderRadius: BorderRadius.circular(14),
         ),
         child: const Icon(Icons.delete_rounded, color: Colors.white),
       ),
       onDismissed: (_) => provider.remove(todo.id),
       child: Container(
-        margin: const EdgeInsets.only(bottom: 8),
+        margin: const EdgeInsets.only(bottom: 10),
         decoration: BoxDecoration(
-          color: isDark ? AppTheme.darkCard : Colors.white,
+          color: theme.cardColor,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
             color: todo.isDone
-                ? Colors.transparent
-                : (isDark ? AppTheme.darkBorder : AppTheme.lightBorder),
+              ? Colors.transparent
+              : theme.colorScheme.outline.withOpacity(0.3),
           ),
         ),
         child: Material(
@@ -305,33 +296,31 @@ class _TodoScreenState extends State<TodoScreen> {
             borderRadius: BorderRadius.circular(14),
             onTap: () => provider.toggle(todo.id),
             child: Padding(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 14, vertical: 13),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               child: Row(
                 children: [
                   // 勾选框
                   AnimatedContainer(
                     duration: const Duration(milliseconds: 200),
-                    width: 22,
-                    height: 22,
+                    width: 24,
+                    height: 24,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: todo.isDone
-                          ? const Color(0xFF07C160)
-                          : Colors.transparent,
+                      color: todo.isDone ? AppTheme.accentGreen : Colors.transparent,
                       border: Border.all(
                         color: todo.isDone
-                            ? const Color(0xFF07C160)
-                            : (isDark ? Colors.white.withOpacity(0.38) : Colors.black.withOpacity(0.26)),
-                        width: 1.5,
+                          ? AppTheme.accentGreen
+                          : theme.textTheme.bodySmall?.color ?? Colors.grey,
+                        width: 2,
                       ),
                     ),
                     child: todo.isDone
-                        ? const Icon(Icons.check_rounded,
-                            color: Colors.white, size: 13)
-                        : null,
+                      ? const Icon(Icons.check_rounded, color: Colors.white, size: 14)
+                      : null,
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 14),
+
+                  // 内容
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -340,28 +329,17 @@ class _TodoScreenState extends State<TodoScreen> {
                           todo.title,
                           style: TextStyle(
                             fontSize: 15,
-                            fontWeight: todo.isDone
-                                ? FontWeight.normal
-                                : FontWeight.w500,
-                            decoration: todo.isDone
-                                ? TextDecoration.lineThrough
-                                : null,
+                            fontWeight: todo.isDone ? FontWeight.w400 : FontWeight.w500,
+                            decoration: todo.isDone ? TextDecoration.lineThrough : null,
                             color: todo.isDone
-                                ? (isDark
-                                    ? Colors.white.withOpacity(0.30)
-                                    : Colors.black.withOpacity(0.30))
-                                : (isDark
-                                    ? const Color(0xFFDDE0FF)
-                                    : const Color(0xFF1A1B30)),
+                              ? theme.textTheme.bodySmall?.color
+                              : theme.textTheme.bodyLarge?.color,
                           ),
                         ),
                         const SizedBox(height: 2),
                         Text(
                           _timeAgo(todo.createdAt),
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: isDark ? Colors.white.withOpacity(0.24) : Colors.black.withOpacity(0.26),
-                          ),
+                          style: theme.textTheme.labelSmall,
                         ),
                       ],
                     ),
@@ -375,7 +353,7 @@ class _TodoScreenState extends State<TodoScreen> {
     );
   }
 
-  Widget _buildEmpty(bool isDark) {
+  Widget _buildEmpty(ThemeData theme, bool isDark) {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -384,31 +362,26 @@ class _TodoScreenState extends State<TodoScreen> {
             width: 80,
             height: 80,
             decoration: BoxDecoration(
-              color: AppTheme.primaryDark.withOpacity(0.08),
+              color: theme.colorScheme.primary.withOpacity(0.08),
               shape: BoxShape.circle,
             ),
             child: Icon(
               Icons.check_circle_outline_rounded,
-              size: 38,
-              color: AppTheme.primaryDark.withOpacity(0.4),
+              size: 40,
+              color: theme.colorScheme.primary.withOpacity(0.4),
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 20),
           Text(
             '暂无待办',
-            style: TextStyle(
-              fontSize: 16,
+            style: theme.textTheme.titleMedium?.copyWith(
               fontWeight: FontWeight.w600,
-              color: isDark ? Colors.white.withOpacity(0.38) : Colors.black.withOpacity(0.38),
             ),
           ),
           const SizedBox(height: 6),
           Text(
-            '在上方输入框记录待办事项',
-            style: TextStyle(
-              fontSize: 13,
-              color: isDark ? Colors.white.withOpacity(0.24) : Colors.black.withOpacity(0.26),
-            ),
+            '在上方输入框记录待办',
+            style: theme.textTheme.bodySmall,
           ),
         ],
       ),
@@ -421,5 +394,119 @@ class _TodoScreenState extends State<TodoScreen> {
     if (diff.inHours < 1) return '${diff.inMinutes} 分钟前';
     if (diff.inDays < 1) return '${diff.inHours} 小时前';
     return '${diff.inDays} 天前';
+  }
+}
+
+// 渐变进度条组件
+class _GradientProgressBar extends StatefulWidget {
+  final double progress;
+  final bool isDark;
+
+  const _GradientProgressBar({
+    required this.progress,
+    required this.isDark,
+  });
+
+  @override
+  State<_GradientProgressBar> createState() => _GradientProgressBarState();
+}
+
+class _GradientProgressBarState extends State<_GradientProgressBar>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _animation;
+  double _oldProgress = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 600),
+      vsync: this,
+    );
+    _animation = Tween<double>(begin: 0, end: widget.progress).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic),
+    );
+    _controller.forward();
+  }
+
+  @override
+  void didUpdateWidget(covariant _GradientProgressBar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.progress != widget.progress) {
+      _oldProgress = _animation.value;
+      _animation = Tween<double>(begin: _oldProgress, end: widget.progress).animate(
+        CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic),
+      );
+      _controller.forward(from: 0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _animation,
+      builder: (context, child) {
+        final value = _animation.value;
+        return Container(
+          height: 8,
+          decoration: BoxDecoration(
+            color: widget.isDark
+                ? Colors.white.withOpacity(0.1)
+                : Colors.grey.withOpacity(0.15),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Stack(
+            children: [
+              FractionallySizedBox(
+                widthFactor: value.clamp(0.0, 1.0),
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        AppTheme.primaryDark,
+                        AppTheme.primaryDark.withGreen(220),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(4),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppTheme.primaryDark.withOpacity(0.3),
+                        blurRadius: 4,
+                        offset: const Offset(0, 1),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              // 发光效果
+              if (value > 0)
+                FractionallySizedBox(
+                  widthFactor: value.clamp(0.0, 1.0),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          Colors.white.withOpacity(0.4),
+                          Colors.white.withOpacity(0.1),
+                        ],
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                      ),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
+    );
   }
 }

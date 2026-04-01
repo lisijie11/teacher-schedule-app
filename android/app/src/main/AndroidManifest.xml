@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <uses-permission android:name="android.permission.VIBRATE"/>
     <uses-permission android:name="android.permission.USE_EXACT_ALARM"/>
@@ -7,6 +8,22 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <!-- 悬浮窗权限 - 超级岛核心 -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
+    <!-- 前台服务权限 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
+    <!-- 无障碍服务权限 - 保活核心 -->
+    <uses-permission android:name="android.permission.BIND_ACCESSIBILITY_SERVICE"/>
+    <!-- 唤醒锁 -->
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <!-- 相机权限 - 头像拍照 -->
+    <uses-permission android:name="android.permission.CAMERA"/>
+    <!-- 图片读取权限 -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32"/>
 
     <application
         android:label="教师课表助手"
@@ -32,35 +49,79 @@
             </intent-filter>
         </activity>
 
-        <!-- 桌面小组件 v4（兼容旧版） -->
-        <receiver android:name=".ScheduleWidget"
+        <!-- 桌面小组件 - 3种尺寸（参照 mikcb 方案：RemoteViews + XML） -->
+        <!-- 小号 2×2 -->
+        <receiver
+            android:name=".ScheduleWidget"
             android:exported="true"
-            android:label="教师日程小组件">
+            android:label="课表(小)">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
-                <action android:name="android.appwidget.action.APPWIDGET_ENABLED"/>
-                <action android:name="es.antonborri.home_widget.action.UPDATE"/>
             </intent-filter>
-            <meta-data android:name="android.appwidget.provider"
-                android:resource="@xml/schedule_widget_info"/>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_config_small"/>
         </receiver>
         
-        <!-- 桌面小组件 v5（增强版，支持多课程显示） -->
-        <receiver android:name=".ScheduleWidgetV5"
+        <!-- 中号 4×2 -->
+        <receiver
+            android:name=".ScheduleWidgetMedium"
             android:exported="true"
-            android:label="教师日程小组件 v5">
+            android:label="课表(中)">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
-                <action android:name="android.appwidget.action.APPWIDGET_ENABLED"/>
-                <action android:name="android.appwidget.action.APPWIDGET_DISABLED"/>
-                <action android:name="es.antonborri.home_widget.action.UPDATE"/>
             </intent-filter>
-            <meta-data android:name="android.appwidget.provider"
-                android:resource="@xml/schedule_widget_info_v5"/>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_config_medium"/>
+        </receiver>
+        
+        <!-- 大号 4×4 -->
+        <receiver
+            android:name=".ScheduleWidgetLarge"
+            android:exported="true"
+            android:label="课表(大)">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_config_large"/>
         </receiver>
 
-        <!-- 开机自启 -->
-        <receiver android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver"
+        <!-- 超级岛服务 - 悬浮窗实现 -->
+        <service
+            android:name=".HyperIslandService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="media_playback"/>
+        </service>
+
+        <!-- 实时更新服务 - 前台服务保活 -->
+        <service
+            android:name=".LiveUpdateService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync"
+            android:enabled="true"
+            android:stopWithTask="false" />
+
+        <!-- 保活无障碍服务 - 核心保活机制 -->
+        <service
+            android:name=".KeepAliveAccessibilityService"
+            android:exported="true"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+            android:enabled="true">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService"/>
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/keep_alive_accessibility_service"/>
+        </service>
+
+        <!-- 开机自启 - 通知提醒 -->
+        <receiver
+            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED"/>
@@ -70,7 +131,20 @@
             </intent-filter>
         </receiver>
 
-        <receiver android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver"
+        <!-- 服务重启广播接收器 -->
+        <receiver
+            android:name=".ServiceRestartReceiver"
+            android:exported="true"
+            android:enabled="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED"/>
+                <action android:name="com.lisijie.teacher_schedule.RESTART_LIVE_UPDATE"/>
+                <action android:name="com.lisijie.teacher_schedule.RESTART_KEEP_ALIVE"/>
+            </intent-filter>
+        </receiver>
+
+        <receiver
+            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver"
             android:exported="false"/>
 
         <meta-data

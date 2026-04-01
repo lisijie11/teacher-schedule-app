@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_container"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_bg">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:padding="16dp"
+        android:gravity="center">
+
+        <TextView
+            android:id="@+id/widget_date"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="4月1日"
+            android:textSize="12sp"
+            android:textColor="#64748B"/>
+
+        <TextView
+            android:id="@+id/widget_time"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="08:30"
+            android:textSize="32sp"
+            android:textColor="#1E293B"
+            android:textStyle="bold"
+            android:layout_marginTop="4dp"/>
+
+        <TextView
+            android:id="@+id/widget_course_name"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="暂无课程"
+            android:textSize="14sp"
+            android:textColor="#1E293B"
+            android:textStyle="bold"
+            android:layout_marginTop="8dp"
+            android:singleLine="true"/>
+
+        <TextView
+            android:id="@+id/widget_location"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="点击添加"
+            android:textSize="12sp"
+            android:textColor="#1D9BF0"
+            android:layout_marginTop="2dp"/>
+
+    </LinearLayout>
+
+</FrameLayout>

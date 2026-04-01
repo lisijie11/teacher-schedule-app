@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 澎湃OS3风格：毛玻璃白色背景 -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 主背景 -->
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:startColor="#F8FAFC"
+                android:endColor="#FFFFFF"
+                android:angle="135"/>
+            <corners android:radius="28dp"/>
+        </shape>
+    </item>
+    <!-- 内部高光边框 -->
+    <item
+        android:left="1dp"
+        android:top="1dp"
+        android:right="1dp"
+        android:bottom="1dp">
+        <shape android:shape="rectangle">
+            <stroke android:width="0.5dp" android:color="#40FFFFFF"/>
+            <corners android:radius="27dp"/>
+        </shape>
+    </item>
+</layer-list>

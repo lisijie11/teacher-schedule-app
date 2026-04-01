@@ -17,11 +17,14 @@ class ScheduleScreen extends StatefulWidget {
 class _ScheduleScreenState extends State<ScheduleScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  
+  // 周几标签
+  static const List<String> _weekdayLabels = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 7, vsync: this);
   }
 
   @override
@@ -45,40 +48,44 @@ class _ScheduleScreenState extends State<ScheduleScreen>
           ),
         ],
         bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(52),
+          preferredSize: const Size.fromHeight(60),
           child: Container(
             margin: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-            height: 40,
+            height: 48,
             decoration: BoxDecoration(
               color: isDark ? AppTheme.darkBg3 : AppTheme.lightBg1,
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(14),
             ),
             child: TabBar(
               controller: _tabController,
               indicator: BoxDecoration(
                 color: AppTheme.primaryDark,
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(12),
               ),
               indicatorSize: TabBarIndicatorSize.tab,
+              indicatorPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
               labelColor: Colors.white,
               unselectedLabelColor: isDark ? Colors.white54 : Colors.black.withOpacity(0.45),
               labelStyle:
-                  const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                  const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+              unselectedLabelStyle:
+                  const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
               dividerColor: Colors.transparent,
-              tabs: const [
-                Tab(text: '工作日'),
-                Tab(text: '周末'),
-              ],
+              isScrollable: true,
+              tabAlignment: TabAlignment.start,
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              tabs: _weekdayLabels.map((day) => Tab(text: day)).toList(),
             ),
           ),
         ),
       ),
       body: TabBarView(
         controller: _tabController,
-        children: [
-          _buildScheduleView(context, isDark, ScheduleMode.weekday),
-          _buildScheduleView(context, isDark, ScheduleMode.weekend),
-        ],
+        children: List.generate(7, (index) {
+          // 1-5 是工作日，6-7 是周末
+          final weekday = index + 1;
+          return _buildScheduleView(context, isDark, weekday);
+        }),
       ),
     );
   }
@@ -87,13 +94,12 @@ class _ScheduleScreenState extends State<ScheduleScreen>
   //  课表视图
   // ──────────────────────────────────────────
   Widget _buildScheduleView(
-      BuildContext context, bool isDark, ScheduleMode mode) {
-    final periods = SchedulePresets.getPeriodsForMode(mode);
+      BuildContext context, bool isDark, int weekday) {
+    final periods = SchedulePresets.getPeriodsForWeekday(weekday);
     final scheduleProvider = context.watch<ScheduleProvider>();
     final courseProvider = context.watch<CourseProvider>();
-    final reminders =
-        scheduleProvider.getRemindersForMode(mode == ScheduleMode.weekday);
-    final isWeekday = mode == ScheduleMode.weekday;
+    final reminders = scheduleProvider.getRemindersForWeekday(weekday);
+    final isWeekday = weekday <= 5;
 
     final amPeriods = periods.where((p) => p.startHour < 12).toList();
     final pmPeriods = periods.where((p) => p.startHour >= 12).toList();
@@ -111,7 +117,7 @@ class _ScheduleScreenState extends State<ScheduleScreen>
           _sectionHeader(isDark, '上午', Icons.wb_sunny_outlined),
           const SizedBox(height: 8),
           ...amPeriods.map((p) => _buildPeriodCard(
-              context, isDark, p, isWeekday, courseProvider)),
+              context, isDark, p, weekday, courseProvider)),
           const SizedBox(height: 16),
         ],
 
@@ -120,7 +126,7 @@ class _ScheduleScreenState extends State<ScheduleScreen>
           _sectionHeader(isDark, '下午', Icons.wb_twilight_outlined),
           const SizedBox(height: 8),
           ...pmPeriods.map((p) => _buildPeriodCard(
-              context, isDark, p, isWeekday, courseProvider)),
+              context, isDark, p, weekday, courseProvider)),
           const SizedBox(height: 16),
         ],
 
@@ -130,8 +136,7 @@ class _ScheduleScreenState extends State<ScheduleScreen>
           children: [
             _sectionHeader(isDark, '自定义提醒', Icons.alarm_rounded),
             TextButton.icon(
-              onPressed: () => _showAddReminderDialog(context,
-                  forWeekday: mode == ScheduleMode.weekday),
+              onPressed: () => _showAddReminderDialog(context, weekday: weekday),
               icon: const Icon(Icons.add_rounded, size: 16),
               label: const Text('添加'),
               style: TextButton.styleFrom(
@@ -193,7 +198,7 @@ class _ScheduleScreenState extends State<ScheduleScreen>
     BuildContext context,
     bool isDark,
     ClassPeriod period,
-    bool isWeekday,
+    int weekday,
     CourseProvider courseProvider,
   ) {
     final hues = [
@@ -208,11 +213,11 @@ class _ScheduleScreenState extends State<ScheduleScreen>
     ];
     final accentColor = hues[(period.index - 1) % hues.length];
 
-    final course = courseProvider.getEntry(isWeekday, period.index);
+    final course = courseProvider.getEntry(weekday, period.index);
     final hasCourse = course != null && course.courseName.isNotEmpty;
 
     return GestureDetector(
-      onTap: () => _showCourseEditSheet(context, isDark, period, isWeekday,
+      onTap: () => _showCourseEditSheet(context, isDark, period, weekday,
           courseProvider, course),
       child: Container(
         margin: const EdgeInsets.only(bottom: 8),
@@ -356,7 +361,7 @@ class _ScheduleScreenState extends State<ScheduleScreen>
     BuildContext context,
     bool isDark,
     ClassPeriod period,
-    bool isWeekday,
+    int weekday,
     CourseProvider courseProvider,
     CourseEntry? existing,
   ) {
@@ -597,8 +602,8 @@ class _ScheduleScreenState extends State<ScheduleScreen>
                       }
                       final entry = CourseEntry(
                         id: existing?.id ??
-                            '${isWeekday ? "w" : "e"}_${period.index}',
-                        isWeekday: isWeekday,
+                            '${weekday}_${period.index}',
+                        weekday: weekday,
                         periodIndex: period.index,
                         courseName: name,
                         classroom: roomCtrl.text.trim(),
@@ -731,7 +736,7 @@ class _ScheduleScreenState extends State<ScheduleScreen>
                   color: isDark ? Colors.white.withOpacity(0.30) : Colors.black.withOpacity(0.26)),
               onPressed: () {
                 provider.removeReminder(reminder.id);
-                NotificationService.instance.cancel(reminder.id.hashCode);
+                NotificationService.instance.cancelClassReminders();
               },
             ),
           ],
@@ -759,10 +764,10 @@ class _ScheduleScreenState extends State<ScheduleScreen>
     );
   }
 
-  void _showAddReminderDialog(BuildContext context, {bool forWeekday = true}) {
+  void _showAddReminderDialog(BuildContext context, {int weekday = 1}) {
     final titleCtrl = TextEditingController();
     TimeOfDay selectedTime = TimeOfDay.now();
-    bool isWeekday = forWeekday;
+    int selectedWeekday = weekday;
 
     showModalBottomSheet(
       context: context,
@@ -845,6 +850,7 @@ class _ScheduleScreenState extends State<ScheduleScreen>
                   ),
                 ),
                 const SizedBox(height: 12),
+                // 星期选择
                 Row(
                   children: [
                     Text('适用于：',
@@ -853,11 +859,16 @@ class _ScheduleScreenState extends State<ScheduleScreen>
                           color: isDark ? Colors.white70 : Colors.black54,
                         )),
                     const SizedBox(width: 10),
-                    _filterChip(isDark, '工作日', isWeekday,
-                        () => setS(() => isWeekday = true)),
-                    const SizedBox(width: 8),
-                    _filterChip(isDark, '周末', !isWeekday,
-                        () => setS(() => isWeekday = false)),
+                    ...List.generate(7, (index) {
+                      final day = index + 1;
+                      final isSelected = selectedWeekday == day;
+                      final labels = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 6),
+                        child: _filterChip(isDark, labels[index], isSelected,
+                            () => setS(() => selectedWeekday = day)),
+                      );
+                    }),
                   ],
                 ),
                 const SizedBox(height: 20),
@@ -881,18 +892,12 @@ class _ScheduleScreenState extends State<ScheduleScreen>
                         title: titleCtrl.text.trim(),
                         hour: selectedTime.hour,
                         minute: selectedTime.minute,
-                        isWeekday: isWeekday,
+                        weekday: selectedWeekday,
                         advanceMinutes: 0,
                       );
                       context.read<ScheduleProvider>().addReminder(reminder);
-                      NotificationService.instance.scheduleWeeklyNotification(
-                        id: reminder.id.hashCode,
-                        title: reminder.title,
-                        body: '提醒时间：${reminder.timeString}',
-                        hour: selectedTime.hour,
-                        minute: selectedTime.minute,
-                        weekdays: isWeekday ? [1, 2, 3, 4, 5] : [6, 7],
-                      );
+                      // 提醒已添加到数据库，通知会在设置页面统一调度
+                      // 这里不需要单独调度通知
                       Navigator.pop(ctx);
                     },
                     child: const Text('保存提醒',

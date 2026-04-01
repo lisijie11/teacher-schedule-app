@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 澎湃OS3风格：精致进度圆环 -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 背景圆环 -->
+    <item android:id="@android:id/background">
+        <shape android:shape="ring"
+            android:useLevel="false"
+            android:thickness="4dp">
+            <solid android:color="#334155"/>
+        </shape>
+    </item>
+    <!-- 进度圆环 -->
+    <item android:id="@android:id/progress">
+        <rotate android:fromDegrees="270"
+            android:toDegrees="270">
+            <shape android:shape="ring"
+                android:useLevel="true"
+                android:thickness="4dp">
+                <solid android:color="#38BDF8"/>
+            </shape>
+        </rotate>
+    </item>
+</layer-list>

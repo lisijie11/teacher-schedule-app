@@ -11,10 +11,10 @@ import 'services/notification_service.dart';
 import 'services/holiday_service.dart';
 import 'services/widget_service.dart';
 import 'screens/home_screen.dart';
-import 'screens/home_page_wrapper.dart';
-import 'screens/login_screen.dart';
-import 'services/api/index.dart';
 import 'theme.dart';
+
+// 小组件通信 Channel
+const MethodChannel _widgetChannel = MethodChannel('com.lisijie.teacher_schedule/widget');
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -38,17 +38,23 @@ void main() async {
   // 初始化节假日服务
   await HolidayService.instance.init();
 
+  // 初始化小组件自动刷新
+  WidgetService.initAutoRefresh();
+
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
     ),
   );
 
-  // 首先创建API认证box
+  // 创建本地认证 box（单人本地使用，无需登录）
   await Hive.openBox('api_auth');
   
-  // 创建API缓存box
+  // 创建 API 缓存 box
   await Hive.openBox('api_cache');
+
+  // 设置小组件通信回调
+  _setupWidgetChannel();
 
   runApp(
     MultiProvider(
@@ -61,6 +67,100 @@ void main() async {
       child: const TeacherScheduleApp(),
     ),
   );
+}
+
+/// 设置小组件通信 Channel
+void _setupWidgetChannel() {
+  _widgetChannel.setMethodCallHandler((call) async {
+    switch (call.method) {
+      case 'getNextCourse':
+        return _getNextCourseData();
+      default:
+        return null;
+    }
+  });
+}
+
+/// 获取下一节课程数据（供小组件使用）
+Map<String, dynamic>? _getNextCourseData() {
+  try {
+    final box = Hive.box<CourseEntry>('courses');
+    final now = DateTime.now();
+    final todayWeekday = now.weekday;
+    final nowMinutes = now.hour * 60 + now.minute;
+
+    // 获取今日课程
+    final courses = box.values.where((c) => c.weekday == todayWeekday).toList();
+    if (courses.isEmpty) return null;
+
+    // 按开始时间排序
+    courses.sort((a, b) => _parseTimeToMinutes(a.startTime).compareTo(_parseTimeToMinutes(b.startTime)));
+
+    // 查找当前进行中的课程
+    for (final course in courses) {
+      final startMin = _parseTimeToMinutes(course.startTime);
+      final endMin = _parseTimeToMinutes(course.endTime);
+
+      if (nowMinutes >= startMin && nowMinutes < endMin) {
+        // 正在上课
+        final totalDuration = endMin - startMin;
+        final elapsed = nowMinutes - startMin;
+        final progress = totalDuration > 0 ? (elapsed * 100 ~/ totalDuration) : 0;
+        final remaining = endMin - nowMinutes;
+        final remainingHours = remaining ~/ 60;
+        final remainingMinutes = remaining % 60;
+        final remainingText = remainingHours > 0 ? '${remainingHours}小时${remainingMinutes}分' : '${remainingMinutes}分钟';
+
+        return {
+          'name': course.courseName,
+          'time': '${course.startTime}-${course.endTime}',
+          'location': course.classroom,
+          'progress': progress,
+          'remainingTime': remainingText,
+          'isOngoing': true,
+        };
+      }
+    }
+
+    // 查找下一节课程
+    for (final course in courses) {
+      final startMin = _parseTimeToMinutes(course.startTime);
+      if (nowMinutes < startMin) {
+        final diff = startMin - nowMinutes;
+        final hours = diff ~/ 60;
+        final minutes = diff % 60;
+        final diffText = hours > 0 ? '${hours}小时${minutes}分' : '${minutes}分钟';
+
+        return {
+          'name': course.courseName,
+          'time': '${course.startTime}-${course.endTime}',
+          'location': course.classroom,
+          'progress': 0,
+          'remainingTime': diffText,
+          'isOngoing': false,
+        };
+      }
+    }
+
+    return null;
+  } catch (e) {
+    print('[_getNextCourseData] Error: $e');
+    return null;
+  }
+}
+
+int _parseTimeToMinutes(String time) {
+  try {
+    final parts = time.split(':');
+    if (parts.length == 2) {
+      final hour = int.tryParse(parts[0]) ?? 9;
+      final minute = int.tryParse(parts[1]) ?? 0;
+      return hour * 60 + minute;
+    }
+  } catch (e) {
+    // ignore
+  }
+  return 9 * 60;
 }
 
 class TeacherScheduleApp extends StatelessWidget {
@@ -76,104 +176,7 @@ class TeacherScheduleApp extends StatelessWidget {
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
       themeMode: themeProvider.themeMode,
-      home: const AppWrapper(),
+      home: const HomeScreen(), // 直接进入主界面，无需登录
     );
-  }
-}
-
-/// 应用包装器，根据登录状态显示不同的页面
-class AppWrapper extends StatefulWidget {
-  const AppWrapper({Key? key}) : super(key: key);
-
-  @override
-  _AppWrapperState createState() => _AppWrapperState();
-}
-
-class _AppWrapperState extends State<AppWrapper> {
-  bool _checkingAuth = true;
-  bool _isLoggedIn = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _checkAuthStatus();
-  }
-
-  Future<void> _checkAuthStatus() async {
-    // 检查本地认证状态
-    final apiService = ApiServiceManager();
-    final hasValidAuth = await apiService.hasValidLocalAuth();
-    
-    setState(() {
-      _isLoggedIn = hasValidAuth;
-      _checkingAuth = false;
-    });
-  }
-
-  void _onLoginSuccess() {
-    setState(() {
-      _isLoggedIn = true;
-    });
-  }
-
-  void _onLogout() {
-    setState(() {
-      _isLoggedIn = false;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_checkingAuth) {
-      return Scaffold(
-        backgroundColor: AppTheme.backgroundColor,
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                width: 80,
-                height: 80,
-                decoration: BoxDecoration(
-                  color: Colors.deepPurple,
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.deepPurple.withOpacity(0.3),
-                      blurRadius: 20,
-                      spreadRadius: 5,
-                    ),
-                  ],
-                ),
-                child: const Icon(
-                  Icons.school,
-                  size: 40,
-                  color: Colors.white,
-                ),
-              ),
-              const SizedBox(height: 24),
-              const CircularProgressIndicator(
-                color: Colors.deepPurple,
-              ),
-              const SizedBox(height: 16),
-              Text(
-                '正在检查认证状态...',
-                style: TextStyle(
-                  color: Colors.white70,
-                  fontSize: 14,
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    // 根据认证状态显示相应界面
-    if (!_isLoggedIn) {
-      return LoginScreen(onLoginSuccess: _onLoginSuccess);
-    } else {
-      return HomePageWrapper(onLogout: _onLogout);
-    }
   }
 }
