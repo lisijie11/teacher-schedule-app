@@ -12,6 +12,7 @@ import '../services/widget_service.dart';
 import '../services/import_service.dart';
 import '../services/keep_alive_service.dart';
 import '../services/hyper_island_service.dart';
+import 'schedule_edit_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -204,6 +205,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
               _buildWeekdayReminderSection(theme),
               _buildDivider(isDark),
               _buildWeekSummaryTile(theme),
+            ],
+          ),
+
+          const SizedBox(height: 24),
+
+          // ═══════════════════════════════════
+          // 作息时间
+          // ═══════════════════════════════════
+          _buildSectionTitle(theme, '作息时间'),
+          _buildCard(
+            theme,
+            children: [
+              _buildScheduleEditTile(theme, '工作日作息', true),
+              _buildDivider(isDark),
+              _buildScheduleEditTile(theme, '周末作息', false),
             ],
           ),
 
@@ -505,34 +521,34 @@ class _SettingsScreenState extends State<SettingsScreen> {
         // 状态检查
         _buildIslandStatusTile(theme),
         _buildDivider(Theme.of(context).brightness == Brightness.dark),
-        // 课程提醒测试
+        // 课程提醒测试（超级岛 + 通知栏进度）
         _buildIslandTestItem(
           theme: theme,
           icon: Icons.school_outlined,
           title: '课程提醒测试',
-          subtitle: '模拟上课提醒通知',
+          subtitle: '超级岛 + 通知栏进度',
           color: AppTheme.accentBlue,
-          onTap: () => _testIsland('课程提醒测试', '高等数学 @ A301', 10),
+          onTap: () => _testCourseReminder(context),
         ),
         _buildDivider(Theme.of(context).brightness == Brightness.dark),
-        // 倒计时测试
+        // 倒计时测试（超级岛 + 通知栏进度条）
         _buildIslandTestItem(
           theme: theme,
           icon: Icons.timer_outlined,
           title: '倒计时测试',
-          subtitle: '模拟10秒倒计时',
+          subtitle: '超级岛 + 通知栏进度条',
           color: AppTheme.accentOrange,
-          onTap: () => _testIsland('下课倒计时', '还剩 45 分钟', 10),
+          onTap: () => _testCountdown(context),
         ),
         _buildDivider(Theme.of(context).brightness == Brightness.dark),
-        // 会议提醒测试
+        // 会议提醒测试（超级岛 + 通知）
         _buildIslandTestItem(
           theme: theme,
           icon: Icons.meeting_room_outlined,
           title: '会议提醒测试',
-          subtitle: '模拟会议通知',
+          subtitle: '超级岛 + 通知提醒',
           color: AppTheme.accentGreen,
-          onTap: () => _testIsland('教研会议', '下午 2:00 @ 会议室B', 10),
+          onTap: () => _testMeeting(context),
         ),
       ],
     );
@@ -653,50 +669,275 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Future<void> _testIsland(String title, String body, int duration) async {
+  /// 课程提醒测试（超级岛 + 通知栏进度）
+  Future<void> _testCourseReminder(BuildContext context) async {
     // 检查权限
     final hasPermission = await HyperIslandService.hasOverlayPermission();
     if (!hasPermission) {
       if (mounted) {
-        showDialog(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('需要悬浮窗权限'),
-            content: const Text('超级岛功能需要悬浮窗权限才能在屏幕上显示。'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('取消'),
-              ),
-              TextButton(
-                onPressed: () {
-                  Navigator.pop(context);
-                  HyperIslandService.requestOverlayPermission();
-                },
-                child: const Text('去开启'),
-              ),
-            ],
-          ),
-        );
+        _showPermissionBottomSheet(context);
       }
       return;
     }
-    
-    // 显示超级岛
+
+    // 同时显示超级岛
     await HyperIslandService.show(
-      title: title,
-      body: body,
-      durationSeconds: duration,
+      title: '正在上课',
+      body: '高等数学 · A301',
+      durationSeconds: 10,
     );
-    
+
+    // 发送通知栏进度通知
+    await NotificationService.instance.showCourseReminderTest();
+
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('✓ $title 已显示'),
+          content: Row(
+            children: [
+              const Icon(Icons.check_circle_rounded, color: Colors.white, size: 18),
+              const SizedBox(width: 8),
+              const Text('课程提醒已显示（超级岛 + 通知栏）'),
+            ],
+          ),
+          backgroundColor: AppTheme.accentBlue,
           duration: const Duration(seconds: 2),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          margin: const EdgeInsets.all(16),
         ),
       );
     }
+  }
+
+  /// 倒计时测试（超级岛 + 通知栏进度条）
+  Future<void> _testCountdown(BuildContext context) async {
+    // 检查权限
+    final hasPermission = await HyperIslandService.hasOverlayPermission();
+    if (!hasPermission) {
+      if (mounted) {
+        _showPermissionBottomSheet(context);
+      }
+      return;
+    }
+
+    // 同时显示超级岛
+    await HyperIslandService.show(
+      title: '下课倒计时',
+      body: '还剩 45 分钟',
+      durationSeconds: 10,
+    );
+
+    // 发送通知栏进度条通知
+    await NotificationService.instance.showCountdownTest();
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.check_circle_rounded, color: Colors.white, size: 18),
+              const SizedBox(width: 8),
+              const Text('倒计时已显示（超级岛 + 通知栏）'),
+            ],
+          ),
+          backgroundColor: AppTheme.accentOrange,
+          duration: const Duration(seconds: 2),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          margin: const EdgeInsets.all(16),
+        ),
+      );
+    }
+  }
+
+  /// 会议提醒测试（超级岛 + 通知）
+  Future<void> _testMeeting(BuildContext context) async {
+    // 检查权限
+    final hasPermission = await HyperIslandService.hasOverlayPermission();
+    if (!hasPermission) {
+      if (mounted) {
+        _showPermissionBottomSheet(context);
+      }
+      return;
+    }
+
+    // 同时显示超级岛
+    await HyperIslandService.show(
+      title: '教研会议',
+      body: '下午 2:00 · 会议室B',
+      durationSeconds: 10,
+    );
+
+    // 发送会议提醒通知
+    await NotificationService.instance.showMeetingReminderTest(
+      title: '教研会议提醒',
+      body: '下午 2:00 · 会议室B\n点击查看详情',
+    );
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.check_circle_rounded, color: Colors.white, size: 18),
+              const SizedBox(width: 8),
+              const Text('会议提醒已显示（超级岛 + 通知栏）'),
+            ],
+          ),
+          backgroundColor: AppTheme.accentGreen,
+          duration: const Duration(seconds: 2),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          margin: const EdgeInsets.all(16),
+        ),
+      );
+    }
+  }
+
+  /// 澎湃OS3风格权限申请底部弹窗
+  void _showPermissionBottomSheet(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isDismissible: true,
+      builder: (context) => Container(
+        margin: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF2A2A2A) : Colors.white,
+          borderRadius: BorderRadius.circular(28),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.15),
+              blurRadius: 20,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // 顶部拖动条
+            Container(
+              margin: const EdgeInsets.only(top: 12),
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey.shade400,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 24),
+            // 超级岛图标
+            Container(
+              width: 72,
+              height: 72,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    AppTheme.accentBlue,
+                    AppTheme.accentBlue.withOpacity(0.7),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(22),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppTheme.accentBlue.withOpacity(0.3),
+                    blurRadius: 16,
+                    offset: const Offset(0, 6),
+                  ),
+                ],
+              ),
+              child: const Icon(
+                Icons.widgets_rounded,
+                color: Colors.white,
+                size: 36,
+              ),
+            ),
+            const SizedBox(height: 20),
+            // 标题
+            Text(
+              '需要悬浮窗权限',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+                color: isDark ? Colors.white : const Color(0xFF1A1A1A),
+                letterSpacing: 0.2,
+              ),
+            ),
+            const SizedBox(height: 10),
+            // 说明文字
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 32),
+              child: Text(
+                '超级岛功能需要悬浮窗权限才能在屏幕上显示课程提醒和进度信息',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                  height: 1.5,
+                ),
+              ),
+            ),
+            const SizedBox(height: 28),
+            // 开启按钮
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () {
+                    Navigator.pop(context);
+                    HyperIslandService.requestOverlayPermission();
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.accentBlue,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                  child: const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.add_circle_outline_rounded, size: 20),
+                      SizedBox(width: 8),
+                      Text(
+                        '去开启权限',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            // 取消按钮
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text(
+                '稍后再说',
+                style: TextStyle(
+                  fontSize: 15,
+                  color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+            SizedBox(height: MediaQuery.of(context).padding.bottom + 8),
+          ],
+        ),
+      ),
+    );
   }
 
   // ═══════════════════════════════════════════════
@@ -1610,7 +1851,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
 
     final result = await ImportService.exportToClipboard(courseProvider);
-    
+
     if (!mounted) return;
     Navigator.pop(context);
 
@@ -1630,5 +1871,99 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       );
     }
+  }
+
+  // ═══════════════════════════════════════════════
+  // 作息时间自定义
+  // ═══════════════════════════════════════════════
+
+  Widget _buildScheduleEditTile(ThemeData theme, String title, bool isWeekday) {
+    final periods = isWeekday
+        ? SchedulePresets.weekdayPeriods
+        : SchedulePresets.weekendPeriods;
+    final isCustom = SchedulePresets.isCustomSchedule;
+
+    // 显示作息时间摘要
+    final summary = periods.map((p) => p.startTime).join(' · ');
+
+    return InkWell(
+      onTap: () async {
+        final hasChanged = await Navigator.push<bool>(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ScheduleEditScreen(isWeekday: isWeekday),
+          ),
+        );
+        if (hasChanged == true) {
+          // 通知所有相关服务刷新
+          await WidgetService.updateWidget();
+        }
+      },
+      borderRadius: BorderRadius.circular(16),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: AppTheme.accentBlue.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(
+                Icons.schedule_rounded,
+                color: AppTheme.accentBlue,
+                size: 20,
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(title, style: theme.textTheme.bodyLarge),
+                      if (isCustom) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: AppTheme.accentOrange.withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            '已自定义',
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: AppTheme.accentOrange,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    summary,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: Colors.grey,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.chevron_right_rounded,
+              color: Colors.grey[400],
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

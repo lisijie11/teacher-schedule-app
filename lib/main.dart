@@ -38,6 +38,9 @@ void main() async {
   // 初始化节假日服务
   await HolidayService.instance.init();
 
+  // 初始化作息时间配置
+  await SchedulePresets.init();
+
   // 初始化小组件自动刷新
   WidgetService.initAutoRefresh();
 

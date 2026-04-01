@@ -7,6 +7,28 @@ import 'package:hive_flutter/hive_flutter.dart';
 import '../models/schedule_model.dart';
 import '../models/course_model.dart';
 
+/// 通知颜色常量 - 与 APP 主题一致
+class _NotificationColors {
+  // 澎湃OS3 经典蓝
+  static const Color primaryBlue = Color(0xFF1D9BF0);
+  static const Color primaryBlueLight = Color(0xFF38BDF8);
+
+  // 成功/进度
+  static const Color success = Color(0xFF34C759);
+  static const Color warning = Color(0xFFFF9500);
+
+  // 文字色
+  static const Color textPrimary = Color(0xFF1A1A1A);
+  static const Color textSecondary = Color(0xFF8E8E93);
+}
+
+/// 通知图标样式
+enum NotificationIconStyle {
+  course,    // 课程提醒
+  progress,  // 进度通知
+  summary,   // 周总结
+}
+
 class NotificationService {
   NotificationService._();
   static final NotificationService instance = NotificationService._();
@@ -18,10 +40,10 @@ class NotificationService {
   static const String _channelIdClass = 'class_reminder';
   static const String _channelIdProgress = 'class_progress';
   static const String _channelIdWeek = 'week_summary';
-  
+
   // 通知ID
   static const int _progressNotificationId = 9999;
-  
+
   // 定时器
   Timer? _progressTimer;
 
@@ -48,18 +70,18 @@ class NotificationService {
         .resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin>()
         ?.requestNotificationsPermission();
-    
+
     // 创建通知渠道
     await _createNotificationChannels();
   }
-  
+
   /// 创建通知渠道
   Future<void> _createNotificationChannels() async {
     final androidPlugin = _plugin.resolvePlatformSpecificImplementation<
         AndroidFlutterLocalNotificationsPlugin>();
-    
+
     if (androidPlugin == null) return;
-    
+
     // 课程提醒渠道
     await androidPlugin.createNotificationChannel(
       const AndroidNotificationChannel(
@@ -71,7 +93,7 @@ class NotificationService {
         enableVibration: true,
       ),
     );
-    
+
     // 课程进度渠道 - 常驻通知
     await androidPlugin.createNotificationChannel(
       const AndroidNotificationChannel(
@@ -84,7 +106,7 @@ class NotificationService {
         showBadge: false,
       ),
     );
-    
+
     // 周总结渠道
     await androidPlugin.createNotificationChannel(
       const AndroidNotificationChannel(
@@ -98,27 +120,70 @@ class NotificationService {
     );
   }
 
-  // 课程提醒通知详情
-  AndroidNotificationDetails get _classDetails =>
-      const AndroidNotificationDetails(
-        _channelIdClass,
-        '课程提醒',
-        channelDescription: '上课前提醒通知',
-        importance: Importance.max,
-        priority: Priority.max,
-        icon: '@mipmap/ic_launcher',
-        color: Color(0xFF1D9BF0), // 小米蓝
-        enableVibration: true,
-        playSound: true,
-        category: AndroidNotificationCategory.alarm,
-        visibility: NotificationVisibility.public,
-        ticker: '课程提醒',
-        showWhen: true,
-        timeoutAfter: 3600000,
-        fullScreenIntent: true,
-        ongoing: false,
-        autoCancel: true,
-      );
+  /// 构建澎湃OS3风格的通知详情
+  /// 简洁白净风格，无 emoji 混乱感
+  AndroidNotificationDetails _buildHyperOSDetails({
+    required String channelId,
+    required String channelName,
+    required String description,
+    required Importance importance,
+    required Priority priority,
+    required NotificationIconStyle iconStyle,
+    String? title,
+    String? body,
+    String? subText,
+    bool ongoing = false,
+    bool autoCancel = true,
+    int? timeoutAfter,
+    bool fullScreenIntent = false,
+    bool enableVibration = true,
+    bool playSound = true,
+    AndroidNotificationCategory? category,
+    List<AndroidNotificationAction>? actions,
+    StyleInformation? styleInformation,
+    bool showProgress = false,
+    int maxProgress = 100,
+    int progress = 0,
+    bool isActive = true,
+  }) {
+    return AndroidNotificationDetails(
+      channelId,
+      channelName,
+      channelDescription: description,
+      importance: importance,
+      priority: priority,
+      icon: '@mipmap/ic_launcher',
+      color: _NotificationColors.primaryBlue,
+      // 澎湃OS3 风格：白色/浅色背景（系统会根据主题适配）
+      styleInformation: styleInformation ??
+          BigTextStyleInformation(
+            body ?? '',
+            htmlFormatBigText: false,
+            contentTitle: title,
+            htmlFormatContentTitle: false,
+            summaryText: subText,
+          ),
+      // 行为设置
+      enableVibration: enableVibration,
+      playSound: playSound,
+      showWhen: true,
+      timeoutAfter: timeoutAfter,
+      fullScreenIntent: fullScreenIntent,
+      ongoing: ongoing,
+      autoCancel: autoCancel,
+      onlyAlertOnce: true,
+      category: category,
+      visibility: NotificationVisibility.public,
+      ticker: channelName,
+      // 进度条（用于常驻进度通知）
+      showProgress: showProgress,
+      maxProgress: maxProgress,
+      progress: progress,
+      indeterminate: false,
+      // 操作按钮
+      actions: actions,
+    );
+  }
 
   /// 显示课程提醒通知
   Future<void> showClassReminder({
@@ -129,35 +194,29 @@ class NotificationService {
     required String timeRange,
     required String location,
   }) async {
-    // 使用大文本样式显示更多信息
+    // 澎湃OS3 风格：大文本 + 白色背景
     final bigTextStyle = BigTextStyleInformation(
-      '$body\n📍 $location',
+      location.isNotEmpty ? '$body\n$location' : body,
       htmlFormatBigText: false,
       contentTitle: title,
       htmlFormatContentTitle: false,
-      summaryText: '📚 $courseName',
+      summaryText: timeRange,
     );
-    
-    final androidDetails = AndroidNotificationDetails(
-      _channelIdClass,
-      '课程提醒',
-      channelDescription: '上课前提醒通知',
+
+    final androidDetails = _buildHyperOSDetails(
+      channelId: _channelIdClass,
+      channelName: '课程提醒',
+      description: '上课前提醒通知',
       importance: Importance.max,
       priority: Priority.max,
-      icon: '@mipmap/ic_launcher',
-      color: const Color(0xFF1D9BF0),
-      enableVibration: true,
-      playSound: true,
-      category: AndroidNotificationCategory.alarm,
-      visibility: NotificationVisibility.public,
-      ticker: '课程提醒',
-      showWhen: true,
-      timeoutAfter: 3600000,
+      iconStyle: NotificationIconStyle.course,
+      title: title,
+      body: body,
+      subText: timeRange,
       fullScreenIntent: true,
-      ongoing: false,
-      autoCancel: true,
+      timeoutAfter: 3600000,
+      category: AndroidNotificationCategory.alarm,
       styleInformation: bigTextStyle,
-      // 添加操作按钮
       actions: [
         const AndroidNotificationAction(
           'dismiss',
@@ -167,64 +226,62 @@ class NotificationService {
       ],
     );
 
-    await _plugin.show(
-      id,
-      title,
-      body,
-      NotificationDetails(android: androidDetails),
-    );
+    await _plugin.show(id, title, body,
+        NotificationDetails(android: androidDetails));
   }
 
   /// 显示/更新课程进度通知（常驻通知栏）
+  /// 澎湃OS3 风格：纯净白色 + 蓝色进度条 + 简洁文字
   Future<void> showClassProgress({
     required String courseName,
     required String timeRange,
     required String location,
-    required int progressPercent, // 0-100
+    required int progressPercent,
     required String remainingTime,
-    required bool isActive, // 是否正在上课
+    required bool isActive,
   }) async {
-    // 构建进度条样式
-    final progressStyle = AndroidNotificationDetails(
-      _channelIdProgress,
-      '课程进度',
-      channelDescription: '实时显示当前课程进度',
+    // 澎湃OS3 风格通知内容
+    final contentTitle = isActive
+        ? '正在上课 · $courseName'
+        : '即将开始 · $courseName';
+    final contentBody = location.isNotEmpty
+        ? '$remainingTime · $location'
+        : remainingTime;
+
+    final bigTextStyle = BigTextStyleInformation(
+      contentBody,
+      htmlFormatBigText: false,
+      contentTitle: contentTitle,
+      htmlFormatContentTitle: false,
+      summaryText: timeRange,
+    );
+
+    final androidDetails = _buildHyperOSDetails(
+      channelId: _channelIdProgress,
+      channelName: '课程进度',
+      description: '实时显示当前课程进度',
       importance: Importance.low,
       priority: Priority.low,
-      icon: '@mipmap/ic_launcher',
-      color: const Color(0xFF1D9BF0),
+      iconStyle: NotificationIconStyle.progress,
+      title: contentTitle,
+      body: contentBody,
+      subText: timeRange,
+      ongoing: true,
+      autoCancel: false,
       enableVibration: false,
       playSound: false,
-      showWhen: false,
-      ongoing: true, // 常驻通知
-      autoCancel: false, // 不可滑动取消
-      onlyAlertOnce: true, // 只提醒一次
-      // 进度条
       showProgress: true,
       maxProgress: 100,
       progress: progressPercent,
-      indeterminate: false,
-      // 使用大文本显示更多信息
-      styleInformation: BigTextStyleInformation(
-        isActive 
-          ? '⏱️ 剩余 $remainingTime  |  📍 $location'
-          : '⏱️ 还有 $remainingTime 开始  |  📍 $location',
-        htmlFormatBigText: false,
-        contentTitle: isActive 
-          ? '🔵 正在上课：$courseName'
-          : '⏳ 即将开始：$courseName',
-        htmlFormatContentTitle: false,
-        summaryText: timeRange,
-      ),
+      isActive: isActive,
+      styleInformation: bigTextStyle,
     );
 
     await _plugin.show(
       _progressNotificationId,
-      isActive ? '🔵 正在上课：$courseName' : '⏳ 即将开始：$courseName',
-      isActive 
-        ? '⏱️ 剩余 $remainingTime  |  📍 $location'
-        : '⏱️ 还有 $remainingTime 开始  |  📍 $location',
-      NotificationDetails(android: progressStyle),
+      contentTitle,
+      contentBody,
+      NotificationDetails(android: androidDetails),
     );
   }
 
@@ -244,10 +301,10 @@ class NotificationService {
     required DateTime endTime,
   }) {
     _progressTimer?.cancel();
-    
+
     // 立即显示一次
     _updateProgress(courseName, timeRange, location, startTime, endTime);
-    
+
     // 每秒更新一次
     _progressTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       _updateProgress(courseName, timeRange, location, startTime, endTime);
@@ -264,7 +321,7 @@ class NotificationService {
   ) {
     final now = DateTime.now();
     final totalDuration = endTime.difference(startTime).inSeconds;
-    
+
     if (now.isBefore(startTime)) {
       // 课程还未开始
       final remaining = startTime.difference(now);
@@ -273,7 +330,7 @@ class NotificationService {
         timeRange: timeRange,
         location: location,
         progressPercent: 0,
-        remainingTime: _formatDuration(remaining),
+        remainingTime: '还有 ${_formatDuration(remaining)}',
         isActive: false,
       );
     } else if (now.isAfter(endTime)) {
@@ -284,13 +341,13 @@ class NotificationService {
       final elapsed = now.difference(startTime).inSeconds;
       final remaining = endTime.difference(now);
       final progress = ((elapsed / totalDuration) * 100).round();
-      
+
       showClassProgress(
         courseName: courseName,
         timeRange: timeRange,
         location: location,
         progressPercent: progress.clamp(0, 100),
-        remainingTime: _formatDuration(remaining),
+        remainingTime: '剩余 ${_formatDuration(remaining)}',
         isActive: true,
       );
     }
@@ -299,7 +356,7 @@ class NotificationService {
   /// 格式化持续时间
   String _formatDuration(Duration duration) {
     if (duration.inHours > 0) {
-      return '${duration.inHours}小时${duration.inMinutes % 60}分钟';
+      return '${duration.inHours}h${duration.inMinutes % 60}m';
     } else if (duration.inMinutes > 0) {
       return '${duration.inMinutes}分钟';
     } else {
@@ -312,26 +369,20 @@ class NotificationService {
     required String title,
     required String body,
   }) async {
-    final androidDetails = const AndroidNotificationDetails(
-      _channelIdWeek,
-      '周总结',
-      channelDescription: '每周课程总结',
+    final androidDetails = _buildHyperOSDetails(
+      channelId: _channelIdWeek,
+      channelName: '周总结',
+      description: '每周课程总结',
       importance: Importance.high,
       priority: Priority.high,
-      icon: '@mipmap/ic_launcher',
-      color: Color(0xFF22D3EE),
-      enableVibration: true,
-      playSound: true,
+      iconStyle: NotificationIconStyle.summary,
+      title: title,
+      body: body,
       category: AndroidNotificationCategory.reminder,
-      visibility: NotificationVisibility.public,
     );
 
-    await _plugin.show(
-      200,
-      title,
-      body,
-      NotificationDetails(android: androidDetails),
-    );
+    await _plugin.show(200, title, body,
+        NotificationDetails(android: androidDetails));
   }
 
   /// 安排每周重复的课程提醒
@@ -344,38 +395,39 @@ class NotificationService {
   }) async {
     // 取消之前的提醒
     await cancelClassReminders();
-    
+
     int idBase = 100;
-    
+
     for (int day in weekdays) {
       for (int i = 0; i < periods.length; i++) {
         final period = periods[i];
         final notifId = idBase + (day * 10) + i;
-        
+
         // 计算提醒时间
         int totalMinutes = period.startHour * 60 + period.startMinute - advanceMinutes;
         if (totalMinutes < 0) totalMinutes += 24 * 60;
         int notifHour = totalMinutes ~/ 60;
         int notifMinute = totalMinutes % 60;
-        
-        // 构建提醒标题
+
+        // 构建提醒标题（澎湃OS3风格：简洁无 emoji）
         String title;
         if (advanceMinutes > 0) {
           if (advanceMinutes >= 60) {
             final hours = advanceMinutes ~/ 60;
             final mins = advanceMinutes % 60;
-            title = mins > 0 
-              ? '${period.name} ${hours}小时${mins}分钟后'
-              : '${period.name} ${hours}小时后';
+            title = mins > 0
+                ? '${period.name} ${hours}小时${mins}分钟后'
+                : '${period.name} ${hours}小时后';
           } else {
             title = '${period.name} ${advanceMinutes}分钟后';
           }
         } else {
           title = '${period.name} 开始了';
         }
-        
-        final body = '${period.startTime} - ${period.endTime}，准备上课 📚';
-        
+
+        final body = '${period.startTime} - ${period.endTime}，准备上课';
+        final locationText = location.isNotEmpty ? location : '';
+
         await _scheduleNotification(
           id: notifId,
           title: title,
@@ -385,7 +437,7 @@ class NotificationService {
           weekday: day,
           courseName: courseName,
           timeRange: '${period.startTime}-${period.endTime}',
-          location: location,
+          location: locationText,
         );
       }
     }
@@ -403,29 +455,28 @@ class NotificationService {
     required String timeRange,
     required String location,
   }) async {
-    final androidDetails = AndroidNotificationDetails(
-      _channelIdClass,
-      '课程提醒',
-      channelDescription: '上课前提醒通知',
+    final bigTextStyle = BigTextStyleInformation(
+      location.isNotEmpty ? '$body\n$location' : body,
+      htmlFormatBigText: false,
+      contentTitle: title,
+      htmlFormatContentTitle: false,
+      summaryText: timeRange,
+    );
+
+    final androidDetails = _buildHyperOSDetails(
+      channelId: _channelIdClass,
+      channelName: '课程提醒',
+      description: '上课前提醒通知',
       importance: Importance.max,
       priority: Priority.max,
-      icon: '@mipmap/ic_launcher',
-      color: const Color(0xFF1D9BF0),
-      enableVibration: true,
-      playSound: true,
-      category: AndroidNotificationCategory.alarm,
-      visibility: NotificationVisibility.public,
-      ticker: '课程提醒',
-      showWhen: true,
-      timeoutAfter: 3600000,
+      iconStyle: NotificationIconStyle.course,
+      title: title,
+      body: body,
+      subText: timeRange,
       fullScreenIntent: true,
-      styleInformation: BigTextStyleInformation(
-        '$body\n📍 $location',
-        htmlFormatBigText: false,
-        contentTitle: title,
-        htmlFormatContentTitle: false,
-        summaryText: '📚 $courseName',
-      ),
+      timeoutAfter: 3600000,
+      category: AndroidNotificationCategory.alarm,
+      styleInformation: bigTextStyle,
     );
 
     await _plugin.zonedSchedule(
@@ -466,6 +517,10 @@ class NotificationService {
   static const int _smartReminderBaseId = 300; // 智能提醒 ID 范围 300-399
   Timer? _smartCheckTimer;
   DateTime? _lastNotifiedPeriod; // 防止重复通知同一节课
+
+  // 明日课程提醒相关
+  static const int _tomorrowReminderId = 500; // 明日提醒通知 ID
+  String? _lastTomorrowReminderDate; // 上次发送明日提醒的日期，防止重复
 
   /// 启动智能通知系统
   /// 每分钟检查一次，自动调度上课提醒和进度通知
@@ -572,6 +627,9 @@ class NotificationService {
             _lastNotifiedPeriod = notifKey;
           }
         }
+
+        // ── 今日课程结束后：提醒明天课程 ──
+        _checkTomorrowClasses(box, periods);
       }
     } catch (e) {
       print('[NotificationService] 智能通知检查失败: $e');
@@ -579,6 +637,7 @@ class NotificationService {
   }
 
   /// 发送智能上课提醒
+  /// 澎湃OS3 风格：简洁白净，无 emoji 混乱感
   Future<void> _showSmartReminder({
     required ClassPeriod period,
     required String courseName,
@@ -588,46 +647,44 @@ class NotificationService {
     final id = _smartReminderBaseId + period.index;
     final timeStr = '${period.startTime} - ${period.endTime}';
 
+    // 澎湃OS3 风格标题：简洁无 emoji
     String title;
     if (minutesLeft <= 0) {
-      title = '📚 $courseName 开始了';
+      title = '$courseName 开始了';
     } else if (minutesLeft >= 60) {
       final h = minutesLeft ~/ 60;
       final m = minutesLeft % 60;
-      title = m > 0 ? '⏰ ${courseName} ${h}小时${m}分钟后开始' : '⏰ ${courseName} ${h}小时后开始';
+      title = m > 0
+          ? '$courseName ${h}小时${m}分钟后开始'
+          : '$courseName ${h}小时后开始';
     } else {
-      title = '⏰ ${courseName} ${minutesLeft}分钟后开始';
+      title = '$courseName ${minutesLeft}分钟后开始';
     }
 
-    final body = '$timeStr，准备上课 📚';
-    final locText = location.isNotEmpty ? '📍 $location' : '';
+    final body = '$timeStr，准备上课';
+    final locationText = location.isNotEmpty ? location : '';
 
     final bigTextStyle = BigTextStyleInformation(
-      '$body\n$locText',
+      locationText.isNotEmpty ? '$body\n$locationText' : body,
       htmlFormatBigText: false,
       contentTitle: title,
       htmlFormatContentTitle: false,
-      summaryText: '📍 ${location.isNotEmpty ? location : "未设置教室"}',
+      summaryText: timeStr,
     );
 
-    final androidDetails = AndroidNotificationDetails(
-      _channelIdClass,
-      '课程提醒',
-      channelDescription: '上课前提醒通知',
+    final androidDetails = _buildHyperOSDetails(
+      channelId: _channelIdClass,
+      channelName: '课程提醒',
+      description: '上课前提醒通知',
       importance: Importance.max,
       priority: Priority.max,
-      icon: '@mipmap/ic_launcher',
-      color: const Color(0xFF1D9BF0),
-      enableVibration: true,
-      playSound: true,
-      category: AndroidNotificationCategory.alarm,
-      visibility: NotificationVisibility.public,
-      ticker: '课程提醒',
-      showWhen: true,
-      timeoutAfter: 1800000, // 30分钟后自动消失
+      iconStyle: NotificationIconStyle.course,
+      title: title,
+      body: body,
+      subText: timeStr,
       fullScreenIntent: true,
-      ongoing: false,
-      autoCancel: true,
+      timeoutAfter: 1800000,
+      category: AndroidNotificationCategory.alarm,
       styleInformation: bigTextStyle,
       actions: [
         const AndroidNotificationAction(
@@ -636,9 +693,150 @@ class NotificationService {
       ],
     );
 
-    await _plugin.show(id, title, '$body\n$locText',
+    await _plugin.show(id, title, body,
         NotificationDetails(android: androidDetails));
     print('[NotificationService] 智能提醒: $title (剩余$minutesLeft分钟)');
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  //  今日课程结束后提醒明天课程
+  //  当检测到今天最后一节课已结束（超过30分钟），自动提醒明天课程
+  // ═══════════════════════════════════════════════════════════════════════
+
+  /// 检查并发送明日课程提醒
+  /// 在今天最后一节课结束后30分钟自动触发
+  Future<void> _checkTomorrowClasses(
+    Box<CourseEntry> todayBox,
+    List<ClassPeriod> periods,
+  ) async {
+    try {
+      final now = DateTime.now();
+      final todayDate = '${now.year}-${now.month}-${now.day}';
+
+      // 防止同一天重复发送
+      if (_lastTomorrowReminderDate == todayDate) return;
+
+      // 获取今天的作息表最后一节课结束时间
+      if (periods.isEmpty) return;
+      final lastPeriod = periods.last;
+      final lastEndMinutes = lastPeriod.endHour * 60 + lastPeriod.endMinute;
+      final currentMinutes = now.hour * 60 + now.minute;
+
+      // 判断今天最后一节课是否已结束超过30分钟
+      // (最后一节课结束后30分钟~2小时内触发)
+      final minutesAfterEnd = currentMinutes - lastEndMinutes;
+      if (minutesAfterEnd < 30 || minutesAfterEnd > 120) return;
+
+      // 计算明天是周几
+      final tomorrowWeekday = now.weekday == 7 ? 1 : now.weekday + 1;
+
+      // 获取明天的课程
+      final tomorrowPeriods = SchedulePresets.getPeriodsForWeekday(tomorrowWeekday);
+      final tomorrowCourses = <CourseEntry>[];
+
+      for (final period in tomorrowPeriods) {
+        try {
+          final course = todayBox.values.firstWhere(
+            (c) => c.weekday == tomorrowWeekday && c.periodIndex == period.index,
+          );
+          tomorrowCourses.add(course);
+        } catch (_) {
+          // 没有这门课
+        }
+      }
+
+      // 如果明天有课，发送提醒
+      if (tomorrowCourses.isEmpty) return;
+
+      // 标记已发送
+      _lastTomorrowReminderDate = todayDate;
+
+      // 构建通知内容
+      await _showTomorrowReminder(
+        weekday: tomorrowWeekday,
+        courses: tomorrowCourses,
+        periods: tomorrowPeriods,
+      );
+
+      print('[NotificationService] 明日课程提醒已发送: 共${tomorrowCourses.length}节课');
+    } catch (e) {
+      print('[NotificationService] 明日课程提醒失败: $e');
+    }
+  }
+
+  /// 发送明日课程提醒通知
+  /// 澎湃OS3 风格：简洁白净，无 emoji
+  Future<void> _showTomorrowReminder({
+    required int weekday,
+    required List<CourseEntry> courses,
+    required List<ClassPeriod> periods,
+  }) async {
+    // 计算明天日期
+    final now = DateTime.now();
+    final tomorrow = now.add(const Duration(days: 1));
+    final dateStr = '${tomorrow.month}月${tomorrow.day}日';
+
+    // 构建课程列表文本
+    final courseList = <String>[];
+    for (final course in courses) {
+      final periodName = periods
+          .firstWhere((p) => p.index == course.periodIndex, orElse: () => periods.first)
+          .name;
+      final location = course.classroom.isNotEmpty ? ' · ${course.classroom}' : '';
+      courseList.add('${course.courseName} $periodName$location');
+    }
+    final courseText = courseList.join('\n');
+
+    // 计算课程数量摘要
+    final summaryText = '共${courses.length}节课';
+
+    // 构建通知内容
+    const title = '明日课程预告';
+    final body = '$dateStr · $summaryText';
+
+    // 详细文本
+    final bigText = '明天 ($dateStr) 有以下课程：\n\n$courseText\n\n记得提前做好准备！';
+
+    final bigTextStyle = BigTextStyleInformation(
+      bigText,
+      htmlFormatBigText: false,
+      contentTitle: title,
+      htmlFormatContentTitle: false,
+      summaryText: body,
+    );
+
+    final androidDetails = _buildHyperOSDetails(
+      channelId: _channelIdClass,
+      channelName: '明日提醒',
+      description: '今日课程结束后提醒明天课程',
+      importance: Importance.high,
+      priority: Priority.high,
+      iconStyle: NotificationIconStyle.course,
+      title: title,
+      body: body,
+      subText: summaryText,
+      fullScreenIntent: true,
+      timeoutAfter: 3600000, // 1小时后自动消失
+      category: AndroidNotificationCategory.reminder,
+      styleInformation: bigTextStyle,
+      actions: [
+        const AndroidNotificationAction(
+          'dismiss', '我知道了', showsUserInterface: false,
+        ),
+      ],
+    );
+
+    await _plugin.show(
+      _tomorrowReminderId,
+      title,
+      body,
+      NotificationDetails(android: androidDetails),
+    );
+  }
+
+  /// 取消明日提醒
+  Future<void> cancelTomorrowReminder() async {
+    await _plugin.cancel(_tomorrowReminderId);
   }
 
   /// 取消智能通知（所有 300-399 范围）
@@ -670,7 +868,8 @@ class NotificationService {
   Future<void> scheduleWeekSummary() async {
     final courseCount = await _getWeekCourseCount();
 
-    final title = '📊 本周课程小结';
+    // 澎湃OS3 风格标题
+    final title = '本周课程小结';
     final body = courseCount > 0
         ? '本周共${courseCount}节课，您辛苦了！好好休息~'
         : '本周暂无课程安排，注意休息！';
@@ -694,18 +893,16 @@ class NotificationService {
     required int minute,
     required int weekday,
   }) async {
-    final androidDetails = const AndroidNotificationDetails(
-      _channelIdWeek,
-      '周总结',
-      channelDescription: '每周课程总结',
+    final androidDetails = _buildHyperOSDetails(
+      channelId: _channelIdWeek,
+      channelName: '周总结',
+      description: '每周课程总结',
       importance: Importance.high,
       priority: Priority.high,
-      icon: '@mipmap/ic_launcher',
-      color: Color(0xFF22D3EE),
-      enableVibration: true,
-      playSound: true,
+      iconStyle: NotificationIconStyle.summary,
+      title: title,
+      body: body,
       category: AndroidNotificationCategory.reminder,
-      visibility: NotificationVisibility.public,
     );
 
     await _plugin.zonedSchedule(
@@ -729,5 +926,157 @@ class NotificationService {
     } catch (e) {
       return 0;
     }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  //  测试通知方法 - 与超级岛配合使用
+  //  统一白色/纯净风格
+  // ═══════════════════════════════════════════════════════════════════════
+
+  /// 测试通知ID基础值
+  static const int _testNotificationIdBase = 9000;
+
+  /// 课程提醒测试通知（带进度条样式）
+  Future<void> showCourseReminderTest() async {
+    // 模拟课程进行中
+    final now = DateTime.now();
+    final startTime = now.subtract(const Duration(minutes: 15));
+    final endTime = now.add(const Duration(minutes: 30));
+
+    final totalDuration = endTime.difference(startTime).inSeconds;
+    final elapsed = now.difference(startTime).inSeconds;
+    final progress = ((elapsed / totalDuration) * 100).round();
+
+    // 澎湃OS3纯净风格：白色 + 蓝色
+    const title = '正在上课 · 高等数学';
+    const body = '剩余 30 分钟 · A301';
+
+    final bigTextStyle = BigTextStyleInformation(
+      body,
+      htmlFormatBigText: false,
+      contentTitle: title,
+      htmlFormatContentTitle: false,
+      summaryText: '08:30 - 10:05',
+    );
+
+    final androidDetails = _buildHyperOSDetails(
+      channelId: _channelIdProgress,
+      channelName: '课程进度',
+      description: '实时显示当前课程进度',
+      importance: Importance.low,
+      priority: Priority.low,
+      iconStyle: NotificationIconStyle.progress,
+      title: title,
+      body: body,
+      subText: '08:30 - 10:05',
+      ongoing: true,
+      autoCancel: false,
+      enableVibration: false,
+      playSound: false,
+      showProgress: true,
+      maxProgress: 100,
+      progress: progress,
+      styleInformation: bigTextStyle,
+    );
+
+    await _plugin.show(_testNotificationIdBase + 1, title, body,
+        NotificationDetails(android: androidDetails));
+
+    // 30秒后自动取消
+    Future.delayed(const Duration(seconds: 30), () {
+      _plugin.cancel(_testNotificationIdBase + 1);
+    });
+  }
+
+  /// 倒计时测试通知（带进度条样式）
+  Future<void> showCountdownTest() async {
+    const title = '下课倒计时 · 剩余 45 分钟';
+    const body = '请做好准备';
+
+    final bigTextStyle = BigTextStyleInformation(
+      body,
+      htmlFormatBigText: false,
+      contentTitle: title,
+      htmlFormatContentTitle: false,
+      summaryText: '倒计时提醒',
+    );
+
+    final androidDetails = _buildHyperOSDetails(
+      channelId: _channelIdProgress,
+      channelName: '课程进度',
+      description: '倒计时提醒',
+      importance: Importance.low,
+      priority: Priority.low,
+      iconStyle: NotificationIconStyle.progress,
+      title: title,
+      body: body,
+      subText: '倒计时提醒',
+      ongoing: true,
+      autoCancel: false,
+      enableVibration: false,
+      playSound: false,
+      showProgress: true,
+      maxProgress: 100,
+      progress: 75, // 75% 进度
+      styleInformation: bigTextStyle,
+    );
+
+    await _plugin.show(_testNotificationIdBase + 2, title, body,
+        NotificationDetails(android: androidDetails));
+
+    // 30秒后自动取消
+    Future.delayed(const Duration(seconds: 30), () {
+      _plugin.cancel(_testNotificationIdBase + 2);
+    });
+  }
+
+  /// 会议提醒测试通知
+  Future<void> showMeetingReminderTest({
+    required String title,
+    required String body,
+  }) async {
+    final bigTextStyle = BigTextStyleInformation(
+      body,
+      htmlFormatBigText: false,
+      contentTitle: title,
+      htmlFormatContentTitle: false,
+      summaryText: '会议提醒',
+    );
+
+    final androidDetails = _buildHyperOSDetails(
+      channelId: _channelIdClass,
+      channelName: '课程提醒',
+      description: '会议提醒通知',
+      importance: Importance.max,
+      priority: Priority.max,
+      iconStyle: NotificationIconStyle.course,
+      title: title,
+      body: body,
+      subText: '会议提醒',
+      fullScreenIntent: true,
+      timeoutAfter: 60000,
+      category: AndroidNotificationCategory.reminder,
+      styleInformation: bigTextStyle,
+      actions: [
+        const AndroidNotificationAction(
+          'dismiss', '我知道了', showsUserInterface: false,
+        ),
+      ],
+    );
+
+    await _plugin.show(_testNotificationIdBase + 3, title, body,
+        NotificationDetails(android: androidDetails));
+
+    // 30秒后自动取消
+    Future.delayed(const Duration(seconds: 30), () {
+      _plugin.cancel(_testNotificationIdBase + 3);
+    });
+  }
+
+  /// 取消所有测试通知
+  Future<void> cancelTestNotifications() async {
+    await _plugin.cancel(_testNotificationIdBase + 1);
+    await _plugin.cancel(_testNotificationIdBase + 2);
+    await _plugin.cancel(_testNotificationIdBase + 3);
   }
 }

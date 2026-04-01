@@ -98,7 +98,14 @@ class _TodayScreenState extends State<TodayScreen> with TickerProviderStateMixin
             
             // 状态卡片
             SliverToBoxAdapter(
-              child: _buildStatusCard(context, isDark, currentPeriod, nextPeriod, minutesToNext),
+              child: Consumer<CourseProvider>(
+                builder: (context, courseProvider, _) {
+                  final tomorrowInfo = _getTomorrowCourseInfo(courseProvider, todayWeekday);
+                  return _buildStatusCard(
+                    context, isDark, currentPeriod, nextPeriod, minutesToNext, tomorrowInfo,
+                  );
+                },
+              ),
             ),
             
             // 今日课程标题
@@ -361,7 +368,52 @@ class _TodayScreenState extends State<TodayScreen> with TickerProviderStateMixin
       return;
     }
 
-    // 显示加载提示
+    // 1. 请求日历权限
+    final hasPermission = await CalendarService.instance.requestPermissions();
+    if (!hasPermission) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Row(
+            children: [
+              Icon(Icons.block_rounded, color: Colors.white, size: 20),
+              SizedBox(width: 10),
+              Expanded(child: Text('需要日历权限才能添加课程')),
+            ],
+          ),
+          backgroundColor: Colors.orange.shade700,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          margin: const EdgeInsets.all(16),
+        ),
+      );
+      return;
+    }
+
+    // 2. 获取日历列表并让用户选择
+    final calendars = await CalendarService.instance.getCalendars();
+    if (calendars.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('没有找到可写入的日历'),
+          backgroundColor: Colors.orange.shade700,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          margin: const EdgeInsets.all(16),
+        ),
+      );
+      return;
+    }
+
+    // 如果只有一个日历直接使用，否则弹出选择
+    final selectedCal = calendars.length == 1
+        ? calendars.first
+        : await CalendarService.instance.showCalendarPicker(context);
+
+    if (selectedCal == null) return; // 用户取消选择
+
+    // 3. 显示加载提示
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -373,18 +425,22 @@ class _TodayScreenState extends State<TodayScreen> with TickerProviderStateMixin
               child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
             ),
             const SizedBox(width: 12),
-            const Text('正在添加课程到日历...'),
+            Expanded(child: Text('正在添加课程到「${selectedCal.name}」...')),
           ],
         ),
         backgroundColor: Colors.blue.shade700,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         margin: const EdgeInsets.all(16),
-        duration: const Duration(seconds: 3),
+        duration: const Duration(seconds: 5),
       ),
     );
 
-    final result = await CalendarService.instance.addNextWeekCourses(courses);
+    // 4. 批量写入日历（静默，无弹窗）
+    final result = await CalendarService.instance.addNextWeekCoursesTo(
+      selectedCal.id!,
+      courses,
+    );
 
     if (!mounted) return;
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
@@ -410,12 +466,31 @@ class _TodayScreenState extends State<TodayScreen> with TickerProviderStateMixin
     );
   }
 
+  /// 获取明天课程信息的元组
+  /// 返回: (weekday, periods, courses)
+  (int, List<ClassPeriod>, List<CourseEntry>) _getTomorrowCourseInfo(CourseProvider courseProvider, int todayWeekday) {
+    // 计算明天是周几
+    final tomorrowWeekday = todayWeekday == 7 ? 1 : todayWeekday + 1;
+    final tomorrowPeriods = SchedulePresets.getPeriodsForWeekday(tomorrowWeekday);
+
+    // 获取明天所有有课程的节次
+    final courses = <CourseEntry>[];
+    for (final period in tomorrowPeriods) {
+      final course = courseProvider.getEntry(tomorrowWeekday, period.index);
+      if (course != null && course.courseName.isNotEmpty) {
+        courses.add(course);
+      }
+    }
+    return (tomorrowWeekday, tomorrowPeriods, courses);
+  }
+
   Widget _buildStatusCard(
     BuildContext context,
     bool isDark,
     ClassPeriod? current,
     ClassPeriod? next,
     int? minutesToNext,
+    (int, List<ClassPeriod>, List<CourseEntry>) tomorrowInfo,
   ) {
     final theme = Theme.of(context);
     final bool isFinished = current == null && next == null;
@@ -441,9 +516,64 @@ class _TodayScreenState extends State<TodayScreen> with TickerProviderStateMixin
     } else {
       accentColor = AppTheme.accentTeal;
       accentIcon = Icons.check_circle_rounded;
-      labelTop = '今日完成';
-      labelMain = '好好休息';
-      labelSub = '明天继续加油 ✨';
+      
+      // 解构明天课程信息
+      final (tomorrowWeekday, tomorrowPeriods, tomorrowCourses) = tomorrowInfo;
+
+      if (tomorrowCourses.isNotEmpty) {
+        // 计算明天日期和星期
+        final tomorrowDate = DateTime.now().add(const Duration(days: 1));
+        final dateStr = '${tomorrowDate.month}月${tomorrowDate.day}日';
+        final weekdayNames = ['', '周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+        final weekdayName = weekdayNames[tomorrowDate.weekday];
+
+        // 区分上午/下午课程
+        int morningCount = 0;
+        int afternoonCount = 0;
+        for (final course in tomorrowCourses) {
+          final period = tomorrowPeriods.firstWhere(
+            (p) => p.index == course.periodIndex,
+            orElse: () => tomorrowPeriods.first,
+          );
+          // 上午: 第1-4节, 下午: 第5-8节
+          if (course.periodIndex <= 4) {
+            morningCount++;
+          } else {
+            afternoonCount++;
+          }
+        }
+
+        // 构建详细课程列表
+        final courseDetails = <String>[];
+        for (final course in tomorrowCourses) {
+          final period = tomorrowPeriods.firstWhere(
+            (p) => p.index == course.periodIndex,
+            orElse: () => tomorrowPeriods.first,
+          );
+          final timePart = course.periodIndex <= 4 ? '上午' : '下午';
+          final location = course.classroom.isNotEmpty ? ' · ${course.classroom}' : '';
+          courseDetails.add('$timePart ${period.name} ${course.courseName}$location');
+        }
+
+        // 显示第一条课程作为主标题
+        labelMain = tomorrowCourses.first.courseName;
+        // 显示副标题：日期 + 上下午课程数 + 第一条课程节次
+        final firstCourse = tomorrowCourses.first;
+        final firstPeriod = tomorrowPeriods.firstWhere(
+          (p) => p.index == firstCourse.periodIndex,
+          orElse: () => tomorrowPeriods.first,
+        );
+        final firstTimePart = firstCourse.periodIndex <= 4 ? '上午' : '下午';
+        final summary = <String>[];
+        if (morningCount > 0) summary.add('上午$morningCount节');
+        if (afternoonCount > 0) summary.add('下午$afternoonCount节');
+        labelSub = '明日 $weekdayName $dateStr · ${summary.join('/')}';
+        labelTop = '今日课程已结束';
+      } else {
+        labelTop = '今日完成';
+        labelMain = '好好休息';
+        labelSub = '明天继续加油 ✨';
+      }
     }
 
     return Container(

@@ -32,9 +32,29 @@ data class WidgetSnapshot(
     val date: String,
     val state: String,           // "ongoing" / "upcoming" / "completed" / "no_course"
     val highlightCourse: WidgetCourseInfo?,
+    val tomorrowCourse: TomorrowCourseInfo?,  // 明日课程信息
     val allCourses: List<WidgetCourseInfo>,
     val totalCourseCount: Int,
     val gridData: List<GridDayInfo>,
+)
+
+data class TomorrowCourseInfo(
+    val weekday: Int,           // 1-7
+    val weekdayName: String,     // "周一"
+    val month: Int,             // 3
+    val day: Int,               // 2
+    val totalCount: Int,        // 总课程数
+    val morningCount: Int,      // 上午课程数
+    val afternoonCount: Int,    // 下午课程数
+    val courses: List<TomorrowCourseDetail>,
+)
+
+data class TomorrowCourseDetail(
+    val period: Int,            // 1-8
+    val periodName: String,     // "第1-2节"
+    val courseName: String,
+    val classroom: String,
+    val timePart: String,      // "morning" / "afternoon"
 )
 
 data class GridDayInfo(
@@ -120,18 +140,15 @@ object WidgetSupport {
         if (id != 0) ctx.resources.getInteger(id) == 1 else false
     } catch (_: Exception) { false }
 
-    // 状态文字
-    fun statusText(state: String): String = when (state) {
-        "ongoing" -> "正在上课"
-        "upcoming" -> "下一节课"
-        "completed" -> "今日已结束"
-        else -> "今日无课"
-    }
-
     // 主课程名
     fun heroCourseName(snapshot: WidgetSnapshot): String {
         return when {
             snapshot.highlightCourse != null -> snapshot.highlightCourse.name
+            snapshot.state == "completed" && snapshot.tomorrowCourse != null -> {
+                // 明日有课，显示第一条课程名
+                val first = snapshot.tomorrowCourse.courses.firstOrNull()
+                first?.courseName ?: "明天有课"
+            }
             snapshot.state == "completed" -> "今天课程已结束"
             else -> "今天没有课程"
         }
@@ -143,6 +160,14 @@ object WidgetSupport {
         return when {
             c != null && c.startTime.isNotBlank() && c.endTime.isNotBlank() ->
                 "${c.startTime} - ${c.endTime}"
+            snapshot.state == "completed" && snapshot.tomorrowCourse != null -> {
+                // 显示明天上下午课程数
+                val t = snapshot.tomorrowCourse
+                val parts = mutableListOf<String>()
+                if (t.morningCount > 0) parts.add("上午${t.morningCount}节")
+                if (t.afternoonCount > 0) parts.add("下午${t.afternoonCount}节")
+                if (parts.isEmpty()) "明天有课" else parts.joinToString(" · ")
+            }
             snapshot.state == "completed" -> "接下来没有课程"
             else -> "留一点时间给自己"
         }
@@ -160,11 +185,23 @@ object WidgetSupport {
 
     // footer 文字
     fun footerText(snapshot: WidgetSnapshot): String {
-        return if (snapshot.totalCourseCount > 0) {
+        return if (snapshot.state == "completed" && snapshot.tomorrowCourse != null) {
+            // 今日完成，显示明天日期和课程数
+            val t = snapshot.tomorrowCourse
+            "明日 ${t.weekdayName} ${t.month}月${t.day}日 · 共${t.totalCount}节"
+        } else if (snapshot.totalCourseCount > 0) {
             "今日 ${snapshot.totalCourseCount} 节课"
         } else {
             "课表助手"
         }
+    }
+
+    // 状态文字
+    fun statusText(state: String, tomorrowCourse: TomorrowCourseInfo?): String = when (state) {
+        "ongoing" -> "正在上课"
+        "upcoming" -> "下一节课"
+        "completed" -> if (tomorrowCourse != null) "明日课程预告" else "今日已结束"
+        else -> "今日无课"
     }
 
     // 去掉高亮课程后的列表
@@ -183,14 +220,44 @@ object WidgetSupport {
     private fun parseSnapshot(json: JSONObject): WidgetSnapshot {
         val allCourses = parseCourses(json.optJSONArray("allCourses"))
         val highlight = json.optJSONObject("highlightCourse")?.let(::parseCourse)
+        val tomorrowCourse = json.optJSONObject("tomorrowCourse")?.let(::parseTomorrowCourse)
         val gridData = parseGridData(json.optJSONArray("gridData"))
         return WidgetSnapshot(
             date = json.optString("date", ""),
             state = json.optString("state", "no_course"),
             highlightCourse = highlight,
+            tomorrowCourse = tomorrowCourse,
             allCourses = allCourses,
             totalCourseCount = json.optInt("totalCourseCount", allCourses.size),
             gridData = gridData,
+        )
+    }
+
+    private fun parseTomorrowCourse(json: JSONObject): TomorrowCourseInfo {
+        val coursesArray = json.optJSONArray("courses")
+        val courses = buildList {
+            if (coursesArray != null) {
+                for (i in 0 until coursesArray.length()) {
+                    val c = coursesArray.getJSONObject(i)
+                    add(TomorrowCourseDetail(
+                        period = c.optInt("period", i + 1),
+                        periodName = c.optString("periodName", ""),
+                        courseName = c.optString("courseName", ""),
+                        classroom = c.optString("classroom", ""),
+                        timePart = c.optString("timePart", "morning"),
+                    ))
+                }
+            }
+        }
+        return TomorrowCourseInfo(
+            weekday = json.optInt("weekday", 1),
+            weekdayName = json.optString("weekdayName", "周一"),
+            month = json.optInt("month", 1),
+            day = json.optInt("day", 1),
+            totalCount = json.optInt("totalCount", courses.size),
+            morningCount = json.optInt("morningCount", 0),
+            afternoonCount = json.optInt("afternoonCount", 0),
+            courses = courses,
         )
     }
 
@@ -288,7 +355,7 @@ class ScheduleWidget : AppWidgetProvider() {
             views.setTextViewText(R.id.widget_small_date, dateText)
 
             // ── 状态标签 ──
-            views.setTextViewText(R.id.widget_small_status, WidgetSupport.statusText(state))
+            views.setTextViewText(R.id.widget_small_status, WidgetSupport.statusText(state, snapshot?.tomorrowCourse))
             views.setInt(
                 R.id.widget_small_status, "setBackgroundResource",
                 when (state) {
@@ -403,7 +470,7 @@ class ScheduleWidgetMedium : AppWidgetProvider() {
             views.setTextViewText(R.id.widget_medium_date, snapshot?.date ?: "课表助手")
 
             // ── 状态标签 ──
-            views.setTextViewText(R.id.widget_medium_status, WidgetSupport.statusText(state))
+            views.setTextViewText(R.id.widget_medium_status, WidgetSupport.statusText(state, snapshot?.tomorrowCourse))
             views.setInt(
                 R.id.widget_medium_status, "setBackgroundResource",
                 when (state) {

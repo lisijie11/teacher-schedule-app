@@ -52,10 +52,10 @@ bool isWeekday(int weekday) => weekday >= 1 && weekday <= 5;
 /// 检查是否为周末（周六、周日）
 bool isWeekendDay(int weekday) => weekday == 6 || weekday == 7;
 
-// 预设作息表
+// 预设作息表（默认值）
 class SchedulePresets {
   // 周一到周五作息 - 两节合并的大节课
-  static const List<ClassPeriod> weekdayPeriods = [
+  static const List<ClassPeriod> weekdayPeriodsDefault = [
     ClassPeriod(
         index: 1, name: '第1-2节', startHour: 8, startMinute: 30, endHour: 10, endMinute: 5),
     ClassPeriod(
@@ -67,7 +67,7 @@ class SchedulePresets {
   ];
 
   // 周六到周日作息 - 两节合并的大节课
-  static const List<ClassPeriod> weekendPeriods = [
+  static const List<ClassPeriod> weekendPeriodsDefault = [
     ClassPeriod(
         index: 1, name: '第1-2节', startHour: 8, startMinute: 0, endHour: 9, endMinute: 40),
     ClassPeriod(
@@ -77,6 +77,121 @@ class SchedulePresets {
     ClassPeriod(
         index: 4, name: '第7-8节', startHour: 16, startMinute: 35, endHour: 18, endMinute: 15),
   ];
+
+  // 运行时缓存
+  static List<ClassPeriod>? _weekdayPeriods;
+  static List<ClassPeriod>? _weekendPeriods;
+  static Box? _settingsBox;
+
+  /// 初始化 - 从 Hive 加载自定义作息时间
+  static Future<void> init() async {
+    _settingsBox ??= Hive.box('settings');
+    await _loadCustomSchedule();
+  }
+
+  /// 从 Hive 加载自定义作息时间
+  static Future<void> _loadCustomSchedule() async {
+    if (_settingsBox == null) return;
+
+    final weekdayJson = _settingsBox!.get('customWeekdayPeriods');
+    final weekendJson = _settingsBox!.get('customWeekendPeriods');
+
+    if (weekdayJson != null) {
+      _weekdayPeriods = _parsePeriods(weekdayJson);
+    } else {
+      _weekdayPeriods = weekdayPeriodsDefault;
+    }
+
+    if (weekendJson != null) {
+      _weekendPeriods = _parsePeriods(weekendJson);
+    } else {
+      _weekendPeriods = weekendPeriodsDefault;
+    }
+  }
+
+  /// 解析作息时间 JSON
+  static List<ClassPeriod> _parsePeriods(dynamic json) {
+    if (json is! List || json.isEmpty) {
+      return weekdayPeriodsDefault;
+    }
+    return json.map((p) {
+      if (p is Map) {
+        return ClassPeriod(
+          index: p['index'] ?? 1,
+          name: p['name'] ?? '第${p['index']}节',
+          startHour: p['startHour'] ?? 8,
+          startMinute: p['startMinute'] ?? 0,
+          endHour: p['endHour'] ?? 9,
+          endMinute: p['endMinute'] ?? 40,
+        );
+      }
+      return weekdayPeriodsDefault.first;
+    }).toList();
+  }
+
+  /// 保存自定义作息时间到 Hive
+  static Future<void> saveCustomSchedule({
+    required List<ClassPeriod>? weekday,
+    required List<ClassPeriod>? weekend,
+  }) async {
+    if (_settingsBox == null) {
+      _settingsBox = Hive.box('settings');
+    }
+
+    if (weekday != null) {
+      final json = weekday.map((p) => {
+        'index': p.index,
+        'name': p.name,
+        'startHour': p.startHour,
+        'startMinute': p.startMinute,
+        'endHour': p.endHour,
+        'endMinute': p.endMinute,
+      }).toList();
+      await _settingsBox!.put('customWeekdayPeriods', json);
+      _weekdayPeriods = weekday;
+    }
+
+    if (weekend != null) {
+      final json = weekend.map((p) => {
+        'index': p.index,
+        'name': p.name,
+        'startHour': p.startHour,
+        'startMinute': p.startMinute,
+        'endHour': p.endHour,
+        'endMinute': p.endMinute,
+      }).toList();
+      await _settingsBox!.put('customWeekendPeriods', json);
+      _weekendPeriods = weekend;
+    }
+  }
+
+  /// 重置为默认作息时间
+  static Future<void> resetToDefault() async {
+    if (_settingsBox == null) {
+      _settingsBox = Hive.box('settings');
+    }
+    await _settingsBox!.delete('customWeekdayPeriods');
+    await _settingsBox!.delete('customWeekendPeriods');
+    _weekdayPeriods = weekdayPeriodsDefault;
+    _weekendPeriods = weekendPeriodsDefault;
+  }
+
+  /// 检查是否使用自定义作息时间
+  static bool get isCustomSchedule {
+    if (_settingsBox == null) return false;
+    return _settingsBox!.get('customWeekdayPeriods') != null ||
+           _settingsBox!.get('customWeekendPeriods') != null;
+  }
+
+  /// 获取当前生效的工作日作息（自定义或默认）
+  static List<ClassPeriod> get weekdayPeriods {
+    return _weekdayPeriods ?? weekdayPeriodsDefault;
+  }
+
+  /// 获取当前生效的周末作息（自定义或默认）
+  static List<ClassPeriod> get weekendPeriods {
+    return _weekendPeriods ?? weekendPeriodsDefault;
+  }
 
   /// 根据周几获取作息表
   static List<ClassPeriod> getPeriodsForWeekday(int weekday) {

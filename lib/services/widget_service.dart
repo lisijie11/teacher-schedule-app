@@ -109,6 +109,7 @@ class WidgetService {
       // ── 确定状态 ──
       String state;
       Map<String, dynamic>? highlightCourseJson;
+      Map<String, dynamic>? tomorrowCourseJson; // 明天课程信息（今日完成后显示）
 
       if (currentPeriod != null) {
         state = 'ongoing';
@@ -134,6 +135,44 @@ class WidgetService {
         highlightCourseJson['section'] = nextPeriod.name;
       } else if (periods.isNotEmpty && nowMinutes >= (periods.last.endHour * 60 + periods.last.endMinute)) {
         state = 'completed';
+        // 获取明天课程信息
+        final tomorrowWeekday = todayWeekday == 7 ? 1 : todayWeekday + 1;
+        final tomorrowPeriods = SchedulePresets.getPeriodsForWeekday(tomorrowWeekday);
+        final tomorrowCourses = <Map<String, dynamic>>[];
+
+        for (final period in tomorrowPeriods) {
+          final course = _getCourseForPeriod(box, tomorrowWeekday, period.index);
+          if (course != null && course.courseName.isNotEmpty) {
+            final timePart = period.index <= 4 ? 'morning' : 'afternoon';
+            tomorrowCourses.add({
+              'period': period.index,
+              'periodName': period.name,
+              'courseName': course.courseName,
+              'classroom': course.classroom,
+              'timePart': timePart,
+            });
+          }
+        }
+
+        // 计算明天日期
+        final tomorrowDate = now.add(const Duration(days: 1));
+        final weekdays = ['', '周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+        final weekdayName = weekdays[tomorrowDate.weekday];
+
+        int morningCount = tomorrowCourses.where((c) => c['timePart'] == 'morning').length;
+        int afternoonCount = tomorrowCourses.where((c) => c['timePart'] == 'afternoon').length;
+
+        tomorrowCourseJson = {
+          'weekday': tomorrowWeekday,
+          'weekdayName': weekdayName,
+          'month': tomorrowDate.month,
+          'day': tomorrowDate.day,
+          'totalCount': tomorrowCourses.length,
+          'morningCount': morningCount,
+          'afternoonCount': afternoonCount,
+          'courses': tomorrowCourses,
+        };
+
         highlightCourseJson = null;
       } else {
         state = 'no_course';
@@ -172,6 +211,7 @@ class WidgetService {
         'date': dateText,
         'state': state,
         'highlightCourse': highlightCourseJson,
+        'tomorrowCourse': tomorrowCourseJson, // 明日课程信息（今日完成后显示）
         'allCourses': allCoursesJson,
         'totalCourseCount': allCoursesJson.length,
         'gridData': gridData,

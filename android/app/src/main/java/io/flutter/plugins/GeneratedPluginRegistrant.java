@@ -16,9 +16,9 @@ public final class GeneratedPluginRegistrant {
   private static final String TAG = "GeneratedPluginRegistrant";
   public static void registerWith(@NonNull FlutterEngine flutterEngine) {
     try {
-      flutterEngine.getPlugins().add(new com.javih.add_2_calendar.Add2CalendarPlugin());
+      flutterEngine.getPlugins().add(new com.builttoroam.devicecalendar.DeviceCalendarPlugin());
     } catch (Exception e) {
-      Log.e(TAG, "Error registering plugin add_2_calendar, com.javih.add_2_calendar.Add2CalendarPlugin", e);
+      Log.e(TAG, "Error registering plugin device_calendar, com.builttoroam.devicecalendar.DeviceCalendarPlugin", e);
     }
     try {
       flutterEngine.getPlugins().add(new com.dexterous.flutterlocalnotifications.FlutterLocalNotificationsPlugin());
