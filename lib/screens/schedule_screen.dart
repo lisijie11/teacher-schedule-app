@@ -851,23 +851,25 @@ class _ScheduleScreenState extends State<ScheduleScreen>
                 ),
                 const SizedBox(height: 12),
                 // 星期选择
-                Row(
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
-                    Text('适用于：',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: isDark ? Colors.white70 : Colors.black54,
-                        )),
-                    const SizedBox(width: 10),
+                    Padding(
+                      padding: const EdgeInsets.only(right: 4),
+                      child: Text('适用于：',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: isDark ? Colors.white70 : Colors.black54,
+                          )),
+                    ),
                     ...List.generate(7, (index) {
                       final day = index + 1;
                       final isSelected = selectedWeekday == day;
                       final labels = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
-                      return Padding(
-                        padding: const EdgeInsets.only(right: 6),
-                        child: _filterChip(isDark, labels[index], isSelected,
-                            () => setS(() => selectedWeekday = day)),
-                      );
+                      return _filterChip(isDark, labels[index], isSelected,
+                          () => setS(() => selectedWeekday = day));
                     }),
                   ],
                 ),
