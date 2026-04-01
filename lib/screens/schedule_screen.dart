@@ -360,7 +360,7 @@ class _ScheduleScreenState extends State<ScheduleScreen>
   void _showCourseEditSheet(
     BuildContext context,
     bool isDark,
-    ClassPeriod period,
+    ClassPeriod initialPeriod,
     int weekday,
     CourseProvider courseProvider,
     CourseEntry? existing,
@@ -372,6 +372,16 @@ class _ScheduleScreenState extends State<ScheduleScreen>
     final noteCtrl =
         TextEditingController(text: existing?.note ?? '');
     int selectedColor = existing?.colorIndex ?? 0;
+    
+    // 获取该天的所有节次
+    final allPeriods = SchedulePresets.getPeriodsForWeekday(weekday);
+    // 当前选中的节次（可切换）
+    late ClassPeriod selectedPeriod = existing != null
+        ? allPeriods.firstWhere(
+            (p) => p.index == existing.periodIndex,
+            orElse: () => initialPeriod,
+          )
+        : initialPeriod;
 
     showModalBottomSheet(
       context: context,
@@ -408,22 +418,39 @@ class _ScheduleScreenState extends State<ScheduleScreen>
                 // 标题行
                 Row(
                   children: [
-                    Container(
-                      width: 36,
-                      height: 36,
-                      decoration: BoxDecoration(
-                        color: CourseEntry.palette[selectedColor]
-                            .withOpacity(0.15),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Center(
-                        child: Text(
-                          '第${period.index}节',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            color: CourseEntry.palette[selectedColor],
+                    // 节次选择器
+                    GestureDetector(
+                      onTap: () => _showPeriodPicker(ctx, allPeriods, selectedPeriod, (p) {
+                        setS(() => selectedPeriod = p);
+                      }),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: CourseEntry.palette[selectedColor]
+                              .withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: CourseEntry.palette[selectedColor].withOpacity(0.3),
                           ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              selectedPeriod.name,
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: CourseEntry.palette[selectedColor],
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            Icon(
+                              Icons.keyboard_arrow_down_rounded,
+                              size: 16,
+                              color: CourseEntry.palette[selectedColor],
+                            ),
+                          ],
                         ),
                       ),
                     ),
@@ -440,7 +467,7 @@ class _ScheduleScreenState extends State<ScheduleScreen>
                             ),
                           ),
                           Text(
-                            '${period.startTime} — ${period.endTime}  ·  ${period.duration.inMinutes}分钟',
+                            '${selectedPeriod.startTime} — ${selectedPeriod.endTime}  ·  ${selectedPeriod.duration.inMinutes}分钟',
                             style: TextStyle(
                               fontSize: 12,
                               color: sheetDark
@@ -602,9 +629,9 @@ class _ScheduleScreenState extends State<ScheduleScreen>
                       }
                       final entry = CourseEntry(
                         id: existing?.id ??
-                            '${weekday}_${period.index}',
+                            '${weekday}_${selectedPeriod.index}',
                         weekday: weekday,
-                        periodIndex: period.index,
+                        periodIndex: selectedPeriod.index,
                         courseName: name,
                         classroom: roomCtrl.text.trim(),
                         note: noteCtrl.text.trim().isEmpty
@@ -616,7 +643,7 @@ class _ScheduleScreenState extends State<ScheduleScreen>
                       Navigator.pop(ctx);
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: Text('✅ 第${period.index}节课已保存'),
+                          content: Text('✅ ${selectedPeriod.name} ${name} 已保存'),
                           backgroundColor: CourseEntry.palette[selectedColor],
                           behavior: SnackBarBehavior.floating,
                           shape: RoundedRectangleBorder(
@@ -982,6 +1009,125 @@ class _ScheduleScreenState extends State<ScheduleScreen>
             child: const Text('明白了'),
           ),
         ],
+      ),
+    );
+  }
+
+  // ──────────────────────────────────────────
+  //  节次选择器
+  // ──────────────────────────────────────────
+  void _showPeriodPicker(
+    BuildContext ctx,
+    List<ClassPeriod> periods,
+    ClassPeriod current,
+    Function(ClassPeriod) onSelect,
+  ) {
+    final isDark = Theme.of(ctx).brightness == Brightness.dark;
+    showModalBottomSheet(
+      context: ctx,
+      backgroundColor: Colors.transparent,
+      builder: (sheetCtx) => Container(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 34),
+        decoration: BoxDecoration(
+          color: isDark ? AppTheme.darkBg2 : Colors.white,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // 拖拽条
+            Container(
+              margin: const EdgeInsets.symmetric(vertical: 14),
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: isDark ? Colors.white.withOpacity(0.24) : Colors.black.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const Text(
+              '选择节次',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 16),
+            // 节次列表
+            ...periods.map((p) => GestureDetector(
+              onTap: () {
+                onSelect(p);
+                Navigator.pop(sheetCtx);
+              },
+              child: Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                decoration: BoxDecoration(
+                  color: p.index == current.index
+                      ? AppTheme.primaryDark.withOpacity(0.1)
+                      : (isDark ? AppTheme.darkCard : Colors.grey.shade100),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: p.index == current.index
+                        ? AppTheme.primaryDark
+                        : Colors.transparent,
+                    width: 2,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: p.index == current.index
+                            ? AppTheme.primaryDark
+                            : AppTheme.primaryDark.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Center(
+                        child: Text(
+                          '${p.index}',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: p.index == current.index
+                                ? Colors.white
+                                : AppTheme.primaryDark,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            p.name,
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          Text(
+                            '${p.startTime} — ${p.endTime}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: isDark
+                                  ? Colors.white.withOpacity(0.5)
+                                  : Colors.black.withOpacity(0.4),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (p.index == current.index)
+                      const Icon(Icons.check_rounded,
+                          color: AppTheme.primaryDark, size: 20),
+                  ],
+                ),
+              ),
+            )),
+          ],
+        ),
       ),
     );
   }
