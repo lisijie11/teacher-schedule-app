@@ -599,9 +599,8 @@ class ScheduleWidgetLarge : AppWidgetProvider() {
             Color.parseColor("#FFB300"), // 金
         )
 
-        // 节次标签（1-8节，4个时间段）
+        // 节次标签（4个大节次）
         private val PERIOD_LABELS = arrayOf("1-2", "3-4", "5-6", "7-8")
-        private val PERIOD_MAP = intArrayOf(0, 0, 0, 1, 1, 2, 2, 3, 3) // period 1→0, 2→0, 3→1...
 
         fun updateWidget(context: Context, mgr: AppWidgetManager, appWidgetId: Int) {
             val views = RemoteViews(context.packageName, R.layout.widget_today_large)
@@ -763,16 +762,16 @@ class ScheduleWidgetLarge : AppWidgetProvider() {
                     val cellW = dayColWidth - cellGap * 2
                     val cellH = rowHeight - cellGap * 2
 
-                    // 获取该格子对应的课程（两个小节合并显示）
-                    val period1 = row * 2 + 1 // 1, 3, 5, 7
-                    val period2 = row * 2 + 2 // 2, 4, 6, 8
+                    // 获取该格子对应的课程
+                    // period 编号与 row 一致：row 0 → period 1(第1-2节), row 1 → period 2(第3-4节)...
+                    val targetPeriod = row + 1 // 1, 2, 3, 4
                     var courseName = ""
                     var courseColor = -1
 
                     if (gridData != null && gridData.size > col) {
                         val dayCourses = gridData[col].courses
                         for (cell in dayCourses) {
-                            if (cell.period == period1 || cell.period == period2) {
+                            if (cell.period == targetPeriod) {
                                 if (cell.name.isNotEmpty()) {
                                     courseName = cell.name
                                     courseColor = cell.color

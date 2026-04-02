@@ -100,9 +100,29 @@ class _TodayScreenState extends State<TodayScreen> with TickerProviderStateMixin
             SliverToBoxAdapter(
               child: Consumer<CourseProvider>(
                 builder: (context, courseProvider, _) {
+                  // 根据是否有课程来判断当前/下一节
+                  ClassPeriod? actualCurrentPeriod;
+                  ClassPeriod? actualNextPeriod;
+                  int? actualMinutesToNext;
+                  
+                  for (final period in periods) {
+                    final course = courseProvider.getEntry(todayWeekday, period.index);
+                    final hasCourse = course != null && course.courseName.isNotEmpty;
+                    if (!hasCourse) continue;
+                    
+                    final startMin = period.startHour * 60 + period.startMinute;
+                    final endMin = period.endHour * 60 + period.endMinute;
+                    if (nowMinutes >= startMin && nowMinutes < endMin) {
+                      actualCurrentPeriod = period;
+                    } else if (nowMinutes < startMin && actualNextPeriod == null) {
+                      actualNextPeriod = period;
+                      actualMinutesToNext = startMin - nowMinutes;
+                    }
+                  }
+                  
                   final tomorrowInfo = _getTomorrowCourseInfo(courseProvider, todayWeekday);
                   return _buildStatusCard(
-                    context, isDark, currentPeriod, nextPeriod, minutesToNext, tomorrowInfo,
+                    context, isDark, actualCurrentPeriod, actualNextPeriod, actualMinutesToNext, tomorrowInfo,
                   );
                 },
               ),
@@ -150,12 +170,14 @@ class _TodayScreenState extends State<TodayScreen> with TickerProviderStateMixin
                     final period = periods[index];
                     final startMin = period.startHour * 60 + period.startMinute;
                     final endMin = period.endHour * 60 + period.endMinute;
-                    final isActive = nowMinutes >= startMin && nowMinutes < endMin;
-                    final isPast = nowMinutes >= endMin;
-                    final isNext = !isActive && !isPast && nextPeriod?.index == period.index;
                     
                     final courseProvider = context.watch<CourseProvider>();
                     final course = courseProvider.getEntry(todayWeekday, period.index);
+                    final hasCourse = course != null && course.courseName.isNotEmpty;
+                    
+                    final isActive = nowMinutes >= startMin && nowMinutes < endMin && hasCourse;
+                    final isPast = nowMinutes >= endMin;
+                    final isNext = !isActive && !isPast && hasCourse && nextPeriod?.index == period.index;
 
                     return _buildPeriodTile(
                       context, isDark, period, isActive, isPast, isNext, nowMinutes, course,

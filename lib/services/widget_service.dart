@@ -189,8 +189,9 @@ class WidgetService {
         final isToday = dayOffset == 0;
 
         // 该天的所有课程（按 weekday 和 periodIndex 查找）
+        // periodIndex 是大节次编号 1-4（1=第1-2节, 2=第3-4节, 3=第5-6节, 4=第7-8节）
         final dayCourses = <Map<String, dynamic>>[];
-        for (int periodIdx = 1; periodIdx <= 8; periodIdx++) {
+        for (int periodIdx = 1; periodIdx <= 4; periodIdx++) {
           final course = _getCourseForPeriod(box, targetWeekday, periodIdx);
           dayCourses.add({
             'period': periodIdx,

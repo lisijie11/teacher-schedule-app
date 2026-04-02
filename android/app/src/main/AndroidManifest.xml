@@ -160,6 +160,26 @@
             android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver"
             android:exported="false"/>
 
+        <!-- 课程提醒精确闹钟接收器 -->
+        <receiver
+            android:name=".ClassReminderReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.lisijie.teacher_schedule.ACTION_CLASS_REMINDER"/>
+                <action android:name="com.lisijie.teacher_schedule.ACTION_HYPER_ISLAND_REMINDER"/>
+            </intent-filter>
+        </receiver>
+
+        <!-- 课程提醒开机自启 -->
+        <receiver
+            android:name=".ClassReminderBootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED"/>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED"/>
+            </intent-filter>
+        </receiver>
+
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />

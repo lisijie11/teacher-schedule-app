@@ -16,6 +16,7 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
+import android.provider.Settings
 import android.util.Log
 import android.widget.RemoteViews
 import androidx.core.app.NotificationCompat
@@ -290,10 +291,89 @@ class LiveUpdateService : Service() {
 
     /**
      * 检查并显示超级岛提醒
+     * 从 snapshot_json 读取数据，只在有下一节课且 state=="upcoming" 时显示
      */
     private fun checkAndShowHyperIsland() {
-        // 这里可以添加逻辑：检查是否有即将到来的课程需要显示超级岛提醒
-        // 例如：课程开始前5分钟显示提醒
+        try {
+            val prefs = getSharedPreferences("HomeWidgetPlugin", Context.MODE_PRIVATE)
+
+            // 从 snapshot_json 读取数据
+            val snapshotJson = prefs.getString("snapshot_json", null) ?: return
+            val snapshot = JSONObject(snapshotJson)
+
+            // 获取当前状态
+            val state = snapshot.optString("state", "")
+
+            // 只有即将上课(upcoming)状态才显示提醒
+            if (state != "upcoming") {
+                return // ongoing(正在上课)或no_course(无课)都不显示
+            }
+
+            // 获取高亮课程信息（下一节课）
+            val highlightCourse = snapshot.optJSONObject("highlightCourse") ?: return
+            val courseName = highlightCourse.optString("name", "")
+            if (courseName.isEmpty()) return
+
+            val startTime = highlightCourse.optString("startTime", "")
+            val location = highlightCourse.optString("location", "")
+
+            // 解析开始时间
+            val timeParts = startTime.split("-")
+            if (timeParts.isEmpty()) return
+            val startParts = timeParts[0].trim().split(":")
+            if (startParts.size < 2) return
+
+            val startHour = startParts[0].toIntOrNull() ?: return
+            val startMinute = startParts[1].toIntOrNull() ?: return
+
+            // 计算当前时间和下一节课的时间差
+            val now = Calendar.getInstance()
+            val currentTotalMinutes = now.get(Calendar.HOUR_OF_DAY) * 60 + now.get(Calendar.MINUTE)
+            val nextTotalMinutes = startHour * 60 + startMinute
+
+            var minutesToNext = nextTotalMinutes - currentTotalMinutes
+            if (minutesToNext < 0) minutesToNext += 24 * 60 // 跨天
+
+            // 只在课程前 30 分钟内显示
+            if (minutesToNext in 1..30) {
+                // 构建提醒内容
+                val title = "$courseName ${minutesToNext}分钟后"
+                val body = if (location.isNotEmpty()) location else "准备上课"
+
+                // 检查是否需要显示（每 5 分钟显示一次）
+                val lastShownKey = "last_hyper_island_time"
+                val lastShown = prefs.getLong(lastShownKey, 0)
+                val currentTime = System.currentTimeMillis()
+
+                // 如果距离上次显示超过 5 分钟，显示新的超级岛
+                if (currentTime - lastShown > 5 * 60 * 1000) {
+                    prefs.edit().putLong(lastShownKey, currentTime).apply()
+
+                    // 尝试显示超级岛
+                    tryShowHyperIsland(title, body, 8)
+
+                    Log.d(TAG, "超级岛提醒已显示: $title (剩余${minutesToNext}分钟)")
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "检查超级岛提醒失败", e)
+        }
+    }
+
+    /**
+     * 尝试显示超级岛
+     */
+    private fun tryShowHyperIsland(title: String, body: String, duration: Int) {
+        try {
+            // 检查是否有悬浮窗权限
+            if (Settings.canDrawOverlays(this)) {
+                HyperIslandService.show(this, title, body, duration)
+            } else {
+                Log.d(TAG, "没有悬浮窗权限，无法显示超级岛")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "显示超级岛失败", e)
+        }
     }
 
     /**

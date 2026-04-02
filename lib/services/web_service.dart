@@ -467,9 +467,10 @@ class WebService {
         ''';
       }
 
-      // 合并建议
+        // 合并建议 - 分开存储用于tooltip
       final nextCourse = _getNextCourse(todayCourses);
-      final adviceText = '🎒${_weather!.travelAdvice} · 👔${_weather!.clothingAdvice}${nextCourse != null ? ' · 📚下一节${nextCourse.courseName}' : ''}';
+      final adviceFull = '${_weather!.travelAdvice} · ${_weather!.clothingAdvice}${nextCourse != null ? ' · 下一节: ${nextCourse.courseName}' : ''}';
+      final adviceShort = '建议: ${_weather!.travelAdvice}';
 
       weatherHtml = '''
         <!-- 当前天气 -->
@@ -493,9 +494,11 @@ class WebService {
           $weeklyCompactHtml
         </div>
 
-        <!-- 上课建议 -->
-        <div class="advice-compact" title="$adviceText">
-          <span>$adviceText</span>
+        <!-- 上课建议 - 带tooltip -->
+        <div class="advice-compact" data-tooltip="$adviceFull">
+          <span class="advice-icon">💡</span>
+          <span class="advice-text">$adviceShort</span>
+          <div class="advice-tooltip">$adviceFull</div>
         </div>
       ''';
     } else {
@@ -596,6 +599,11 @@ class WebService {
       background: var(--bg-card);
       border-radius: var(--radius);
       box-shadow: var(--shadow);
+      transition: all 0.3s ease;
+    }
+
+    .topbar:hover {
+      box-shadow: 0 4px 20px rgba(0,0,0,0.1);
     }
 
     .topbar-left {
@@ -699,7 +707,7 @@ class WebService {
       gap: 16px;
     }
 
-    /* 通用卡片 */
+    /* 通用卡片 - 增加悬浮效果 */
     .card {
       background: var(--bg-card);
       border-radius: var(--radius);
@@ -707,7 +715,31 @@ class WebService {
       overflow: hidden;
       display: flex;
       flex-direction: column;
-      transition: background 0.3s;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      position: relative;
+    }
+
+    .card:hover {
+      box-shadow: 0 8px 30px rgba(0,0,0,0.12);
+      transform: translateY(-2px);
+    }
+
+    .card::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      border-radius: var(--radius);
+      border: 2px solid transparent;
+      transition: border-color 0.3s;
+      pointer-events: none;
+    }
+
+    .card:hover::after {
+      border-color: var(--primary);
+      opacity: 0.3;
     }
 
     .card-header {
@@ -755,6 +787,7 @@ class WebService {
     /* 今日课程卡片 */
     .today-card .card-body { display: flex; flex-direction: column; gap: 10px; }
 
+    /* 今日课程项 */
     .today-item {
       background: var(--bg-secondary);
       border-radius: var(--radius-sm);
@@ -764,11 +797,22 @@ class WebService {
       display: flex;
       flex-direction: column;
       gap: 4px;
+      transition: all 0.2s ease;
+      cursor: pointer;
+    }
+
+    .today-item:hover {
+      background: var(--bg-hover);
+      transform: translateX(4px);
     }
 
     .today-item.active {
       background: linear-gradient(135deg, var(--accent) 0%, var(--primary) 100%);
       color: white;
+    }
+
+    .today-item.active:hover {
+      transform: scale(1.02);
     }
 
     /* 课程状态指示点 */
@@ -787,7 +831,7 @@ class WebService {
 
     @keyframes dotPulse {
       0%, 100% { opacity: 1; transform: scale(1); }
-      50% { opacity: 0.7; transform: scale(1.2); }
+      50% { opacity: 0.7; transform: scale(1.3); }
     }
 
     /* 上课状态标签 */
@@ -835,13 +879,38 @@ class WebService {
     .item-room { font-size: 12px; opacity: 0.7; margin-top: 2px; }
     .item-progress { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
     .progress-track { flex: 1; height: 4px; background: rgba(255,255,255,0.3); border-radius: 2px; }
-    .progress-fill { height: 100%; background: white; border-radius: 2px; transition: width 0.5s; }
+    .progress-fill { 
+      height: 100%; 
+      background: white; 
+      border-radius: 2px; 
+      transition: width 0.5s;
+      position: relative;
+      overflow: hidden;
+    }
+    
+    .progress-fill::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+      animation: shimmer 1.5s infinite;
+    }
+    
+    @keyframes shimmer {
+      0% { transform: translateX(-100%); }
+      100% { transform: translateX(100%); }
+    }
+    
     .progress-num { font-size: 12px; font-weight: 600; min-width: 35px; text-align: right; }
     .item-remaining { font-size: 11px; opacity: 0.8; margin-top: 2px; }
 
     /* 待办卡片 */
     .todo-card .card-body { display: flex; flex-direction: column; gap: 8px; }
 
+    /* 待办项 - 增加交互 */
     .todo-item {
       display: flex;
       align-items: center;
@@ -849,6 +918,13 @@ class WebService {
       padding: 10px 12px;
       background: var(--bg-secondary);
       border-radius: var(--radius-sm);
+      transition: all 0.2s ease;
+      cursor: pointer;
+    }
+
+    .todo-item:hover {
+      background: var(--bg-hover);
+      transform: translateX(4px);
     }
 
     .todo-item.urgent { border-left: 4px solid var(--danger); }
@@ -862,11 +938,17 @@ class WebService {
       border: 2px solid var(--border);
       border-radius: 50%;
       flex-shrink: 0;
+      transition: all 0.2s ease;
     }
 
     .todo-check.checked {
       background: var(--success);
       border-color: var(--success);
+    }
+
+    .todo-check:hover {
+      border-color: var(--primary);
+      transform: scale(1.1);
     }
 
     .todo-text { font-size: 13px; flex: 1; }
@@ -916,6 +998,13 @@ class WebService {
       padding: 8px 4px;
       text-align: center;
       min-height: 60px;
+      transition: all 0.2s ease;
+      cursor: pointer;
+    }
+
+    .grid-cell:hover {
+      transform: scale(1.05);
+      z-index: 10;
     }
 
     .grid-cell.empty {
@@ -923,9 +1012,19 @@ class WebService {
       border: 1px dashed var(--border);
     }
 
+    .grid-cell.empty:hover {
+      background: var(--bg-hover);
+      border-color: var(--primary);
+    }
+
     .grid-cell.course {
       background: var(--cell-color);
       color: var(--text-color);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+
+    .grid-cell.course:hover {
+      box-shadow: 0 4px 16px rgba(0,0,0,0.2);
     }
 
     .cell-name {
@@ -974,15 +1073,25 @@ class WebService {
       align-items: center;
       gap: 10px;
       flex-shrink: 0;
+      transition: all 0.2s ease;
+      cursor: default;
     }
 
-    .weather-icon-lg { font-size: 32px; line-height: 1; }
+    .current-weather:hover .weather-icon-lg {
+      transform: scale(1.1);
+    }
+
+    .weather-icon-lg { 
+      font-size: 32px; 
+      line-height: 1; 
+      transition: transform 0.3s ease;
+    }
     .weather-temp-main { display: flex; align-items: baseline; gap: 2px; }
     .temp-num { font-size: 28px; font-weight: 700; line-height: 1; }
     .temp-unit { font-size: 14px; color: var(--text-secondary); }
     .weather-desc { font-size: 12px; color: var(--text-secondary); }
 
-    /* 降水信息 - 文字简洁版 */
+    /* 降水信息 - 带交互 */
     .precip-info {
       flex-shrink: 0;
       font-size: 12px;
@@ -993,11 +1102,18 @@ class WebService {
       padding: 4px 10px;
       background: var(--bg-secondary);
       border-radius: var(--radius-sm);
+      transition: all 0.2s ease;
+      cursor: pointer;
+    }
+
+    .precip-info:hover {
+      background: var(--primary);
+      color: white;
     }
 
     .precip-icon { font-size: 14px; }
 
-    /* 7天预报 - 紧凑横排 */
+    /* 7天预报 - 紧凑横排带交互 */
     .weekly-compact {
       flex: 1;
       display: flex;
@@ -1012,6 +1128,15 @@ class WebService {
       font-size: 12px;
       white-space: nowrap;
       flex-shrink: 0;
+      padding: 4px 8px;
+      border-radius: 6px;
+      transition: all 0.2s ease;
+      cursor: pointer;
+    }
+
+    .week-compact-item:hover {
+      background: var(--bg-secondary);
+      transform: translateY(-2px);
     }
 
     .week-compact-day { color: var(--text-secondary); }
@@ -1019,23 +1144,70 @@ class WebService {
     .week-compact-temp { color: var(--text-primary); font-weight: 500; }
 
     /* 建议 - 单行合并 */
+    /* 上课建议 - 带tooltip */
     .advice-compact {
       flex-shrink: 0;
       font-size: 12px;
       color: var(--text-secondary);
       display: flex;
       align-items: center;
-      gap: 8px;
-      padding: 4px 12px;
+      gap: 6px;
+      padding: 6px 12px;
       background: var(--bg-secondary);
       border-radius: var(--radius-sm);
-      max-width: 280px;
+      max-width: 200px;
+      cursor: pointer;
+      position: relative;
+      transition: all 0.2s ease;
     }
 
-    .advice-compact span {
+    .advice-compact:hover {
+      background: var(--primary);
+      color: white;
+    }
+
+    .advice-compact:hover .advice-tooltip {
+      opacity: 1;
+      visibility: visible;
+      transform: translateY(0);
+    }
+
+    .advice-icon { font-size: 14px; }
+
+    .advice-text {
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+      max-width: 140px;
+    }
+
+    .advice-tooltip {
+      position: absolute;
+      bottom: calc(100% + 8px);
+      left: 50%;
+      transform: translateX(-50%) translateY(5px);
+      background: var(--text-primary);
+      color: var(--bg-card);
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      white-space: nowrap;
+      opacity: 0;
+      visibility: hidden;
+      transition: all 0.2s ease;
+      z-index: 100;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      line-height: 1.5;
+    }
+
+    .advice-tooltip::after {
+      content: '';
+      position: absolute;
+      top: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      border: 6px solid transparent;
+      border-top-color: var(--text-primary);
     }
 
     /* 空状态 */
@@ -1199,8 +1371,48 @@ class WebService {
       to { opacity: 1; transform: translateY(0); }
     }
 
+    @keyframes fadeInLeft {
+      from { opacity: 0; transform: translateX(-20px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+
+    @keyframes fadeInRight {
+      from { opacity: 0; transform: translateX(20px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+
+    @keyframes scaleIn {
+      from { opacity: 0; transform: scale(0.9); }
+      to { opacity: 1; transform: scale(1); }
+    }
+
     .card { animation: fadeIn 0.4s ease; }
+    .card:nth-child(1) { animation-delay: 0.1s; }
+    .card:nth-child(2) { animation-delay: 0.2s; }
     .topbar { animation: fadeIn 0.3s ease; }
+    
+    /* 课表格子入场动画 */
+    .schedule-col:nth-child(1) { animation: fadeInLeft 0.4s ease 0.1s both; }
+    .schedule-col:nth-child(2) { animation: fadeInLeft 0.4s ease 0.15s both; }
+    .schedule-col:nth-child(3) { animation: fadeInLeft 0.4s ease 0.2s both; }
+    .schedule-col:nth-child(4) { animation: fadeInLeft 0.4s ease 0.25s both; }
+    .schedule-col:nth-child(5) { animation: fadeInLeft 0.4s ease 0.3s both; }
+    .schedule-col:nth-child(6) { animation: fadeInLeft 0.4s ease 0.35s both; }
+    .schedule-col:nth-child(7) { animation: fadeInLeft 0.4s ease 0.4s both; }
+
+    /* 今日课程入场动画 */
+    .today-item { animation: fadeIn 0.3s ease both; }
+    .today-item:nth-child(1) { animation-delay: 0.1s; }
+    .today-item:nth-child(2) { animation-delay: 0.15s; }
+    .today-item:nth-child(3) { animation-delay: 0.2s; }
+    .today-item:nth-child(4) { animation-delay: 0.25s; }
+    
+    /* 待办事项入场动画 */
+    .todo-item { animation: fadeIn 0.3s ease both; }
+    .todo-item:nth-child(1) { animation-delay: 0.1s; }
+    .todo-item:nth-child(2) { animation-delay: 0.15s; }
+    .todo-item:nth-child(3) { animation-delay: 0.2s; }
+    .todo-item:nth-child(4) { animation-delay: 0.25s; }
   </style>
 </head>
 <body>
@@ -1276,6 +1488,46 @@ class WebService {
   </div>
 
   <script>
+    // 添加点击涟漪效果
+    document.addEventListener('DOMContentLoaded', () => {
+      // 添加涟漪样式
+      const style = document.createElement('style');
+      style.textContent = `
+        .ripple {
+          position: absolute;
+          border-radius: 50%;
+          background: rgba(29, 155, 240, 0.3);
+          transform: scale(0);
+          animation: ripple-effect 0.6s ease-out;
+          pointer-events: none;
+        }
+        @keyframes ripple-effect {
+          to {
+            transform: scale(4);
+            opacity: 0;
+          }
+        }
+      `;
+      document.head.appendChild(style);
+
+      // 为可点击元素添加涟漪
+      document.querySelectorAll('.card, .today-item, .todo-item, .grid-cell, .advice-compact, .precip-info, .week-compact-item').forEach(el => {
+        el.style.position = 'relative';
+        el.style.overflow = 'hidden';
+        el.addEventListener('click', function(e) {
+          const ripple = document.createElement('span');
+          ripple.className = 'ripple';
+          const rect = this.getBoundingClientRect();
+          const size = Math.max(rect.width, rect.height);
+          ripple.style.width = ripple.style.height = size + 'px';
+          ripple.style.left = (e.clientX - rect.left - size / 2) + 'px';
+          ripple.style.top = (e.clientY - rect.top - size / 2) + 'px';
+          this.appendChild(ripple);
+          setTimeout(() => ripple.remove(), 600);
+        });
+      });
+    });
+
     // 励志古诗词库
     const quotes = [
       "📜 读万卷书，行万里路",

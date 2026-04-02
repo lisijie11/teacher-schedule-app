@@ -1,11 +1,16 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter/services.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest.dart' as tzdata;
 import 'package:hive_flutter/hive_flutter.dart';
 import '../models/schedule_model.dart';
 import '../models/course_model.dart';
+
+/// 小组件数据通道 - 用于与 Kotlin 端通信
+const _widgetChannel = MethodChannel('com.lisijie.teacher_schedule/widget_data');
 
 /// 通知颜色常量 - 与 APP 主题一致
 class _NotificationColors {
@@ -385,7 +390,8 @@ class NotificationService {
         NotificationDetails(android: androidDetails));
   }
 
-  /// 安排每周重复的课程提醒
+  /// 安排每周重复的课程提醒（双模式：Flutter定时 + 原生AlarmManager）
+  /// 使用原生 AlarmManager 确保即使应用被杀死也能触发
   Future<void> scheduleClassReminders({
     required List<ClassPeriod> periods,
     required List<int> weekdays,
@@ -397,6 +403,9 @@ class NotificationService {
     await cancelClassReminders();
 
     int idBase = 100;
+
+    // 构建课程数据 JSON，用于原生调度
+    final coursesData = <Map<String, dynamic>>[];
 
     for (int day in weekdays) {
       for (int i = 0; i < periods.length; i++) {
@@ -439,7 +448,53 @@ class NotificationService {
           timeRange: '${period.startTime}-${period.endTime}',
           location: locationText,
         );
+
+        // 添加到课程数据（用于原生调度）
+        coursesData.add({
+          'weekday': day,
+          'periodIndex': i,
+          'courseName': courseName,
+          'classroom': location,
+          'startTime': period.startTime,
+          'endTime': period.endTime,
+          'notificationId': notifId,
+        });
       }
+    }
+
+    // 使用原生 AlarmManager 调度精确提醒
+    await _scheduleNativeReminders(coursesData, advanceMinutes);
+  }
+
+  /// 使用原生 AlarmManager 调度精确提醒
+  /// 即使应用被杀死也能触发
+  Future<void> _scheduleNativeReminders(
+    List<Map<String, dynamic>> coursesData,
+    int advanceMinutes,
+  ) async {
+    try {
+      // 将课程数据转换为 JSON
+      final coursesJson = jsonEncode({'courses': coursesData});
+
+      // 调用原生方法调度提醒
+      await _widgetChannel.invokeMethod('scheduleClassReminders', {
+        'coursesJson': coursesJson,
+        'advanceMinutes': advanceMinutes,
+      });
+
+      // 同时保存到 SharedPreferences 用于开机恢复
+      await _widgetChannel.invokeMethod('saveWidgetData', {
+        'key': 'reminder_courses_json',
+        'value': coursesJson,
+      });
+      await _widgetChannel.invokeMethod('saveWidgetInt', {
+        'key': 'reminder_advance_minutes',
+        'value': advanceMinutes,
+      });
+
+      print('[NotificationService] 原生闹钟调度完成');
+    } catch (e) {
+      print('[NotificationService] 原生闹钟调度失败: $e');
     }
   }
 

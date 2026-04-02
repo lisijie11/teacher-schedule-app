@@ -24,7 +24,8 @@ class _ScheduleScreenState extends State<ScheduleScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 7, vsync: this);
+    // 初始化时自动跳转到当天对应的星期几（周一=0, 周日=6）
+    _tabController = TabController(length: 7, vsync: this, initialIndex: DateTime.now().weekday - 1);
   }
 
   @override

@@ -57,6 +57,17 @@ class MainActivity : FlutterActivity() {
                     android.util.Log.d("WidgetData", "触发小组件刷新: $widgetName")
                     result.success(true)
                 }
+                // ========== 原生闹钟调度 ==========
+                "scheduleClassReminders" -> {
+                    val coursesJson = call.argument<String>("coursesJson") ?: ""
+                    val advanceMinutes = call.argument<Int>("advanceMinutes") ?: 15
+                    ClassReminderScheduler.scheduleFromJson(this, coursesJson, advanceMinutes)
+                    result.success(true)
+                }
+                "cancelClassReminders" -> {
+                    ClassReminderScheduler.cancelAll(this)
+                    result.success(true)
+                }
                 else -> result.notImplemented()
             }
         }
@@ -77,7 +88,7 @@ class MainActivity : FlutterActivity() {
                     }
                 }
                 "hideIsland" -> {
-                    HyperIslandService.getInstance()?.hideHyperIsland()
+                    HyperIslandService.hideIsland()
                     result.success(true)
                 }
                 "hasOverlayPermission" -> {
