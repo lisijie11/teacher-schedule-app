@@ -29,20 +29,46 @@ class LocationService {
     }
   }
 
-  /// 获取当前位置坐标（仅使用 WiFi 和移动网络定位，完全禁用 GPS）
+  /// 获取当前位置坐标（优先网络定位，回退GPS）
   Future<Map<String, double>?> getCurrentPosition() async {
     try {
-      // 调用原生网络定位
+      // 调用原生定位
       final result = await _channel.invokeMethod<Map>('getNetworkLocation');
       if (result != null) {
         final lat = result['latitude'] as double;
         final lng = result['longitude'] as double;
-        print('[LocationService] 原生网络定位成功: $lat, $lng');
+        print('[LocationService] 原生定位成功: $lat, $lng');
         return {'latitude': lat, 'longitude': lng};
       }
       return null;
     } catch (e) {
-      print('[LocationService] 原生网络定位失败: $e');
+      print('[LocationService] 原生定位失败: $e');
+      return null;
+    }
+  }
+
+  /// 通过IP定位获取城市（备用方案）
+  Future<String?> getLocationByIP() async {
+    try {
+      print('[LocationService] 尝试IP定位...');
+      
+      // 使用 ip-api.com（免费，每分钟45次请求限制）
+      final response = await http.get(
+        Uri.parse('http://ip-api.com/json/?lang=zh-CN'),
+        headers: {'User-Agent': 'TeacherScheduleApp/2.3.6'},
+      ).timeout(const Duration(seconds: 5));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['status'] == 'success') {
+          final city = data['city']?.toString();
+          print('[LocationService] IP定位成功: $city');
+          return city;
+        }
+      }
+      return null;
+    } catch (e) {
+      print('[LocationService] IP定位失败: $e');
       return null;
     }
   }
@@ -58,9 +84,9 @@ class LocationService {
       final response = await http.get(
         url,
         headers: {
-          'User-Agent': 'TeacherScheduleApp/2.3.0',
+          'User-Agent': 'TeacherScheduleApp/2.3.6',
         },
-      );
+      ).timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -99,10 +125,13 @@ class LocationService {
     }
   }
 
-  /// 一键获取当前城市（组合方法，带缓存）
+  /// 一键获取当前城市（组合方法，带缓存，多方案回退）
   Future<String?> getCurrentCity() async {
-    // 优先使用缓存
-    if (_cachedCity != null) return _cachedCity;
+    // 优先使用内存缓存
+    if (_cachedCity != null) {
+      print('[LocationService] 使用内存缓存: $_cachedCity');
+      return _cachedCity;
+    }
 
     // 尝试从SharedPreferences读取缓存
     try {
@@ -113,29 +142,53 @@ class LocationService {
         final cacheDate = DateTime.fromMillisecondsSinceEpoch(cacheTime);
         if (DateTime.now().difference(cacheDate) < _cacheDuration) {
           _cachedCity = cached;
+          print('[LocationService] 使用本地缓存: $cached');
           return cached;
         }
       }
     } catch (_) {}
 
+    // 方案1：原生定位（网络/GPS）
+    print('[LocationService] 尝试原生定位...');
     try {
       final position = await getCurrentPosition();
-      if (position == null) return null;
-
-      final cityName = await getCityName(position['latitude']!, position['longitude']!);
-      if (cityName != null) {
-        _cachedCity = cityName;
-        // 保存到缓存
-        try {
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setString('cached_city', cityName);
-          await prefs.setInt('city_cache_time', DateTime.now().millisecondsSinceEpoch);
-        } catch (_) {}
+      if (position != null) {
+        final cityName = await getCityName(position['latitude']!, position['longitude']!);
+        if (cityName != null) {
+          print('[LocationService] 原生定位成功: $cityName');
+          _cachedCity = cityName;
+          _saveCache(cityName);
+          return cityName;
+        }
       }
-      return cityName;
     } catch (e) {
-      print('[LocationService] 获取当前城市失败: $e');
-      return null;
+      print('[LocationService] 原生定位失败: $e');
     }
+
+    // 方案2：IP定位（回退方案）
+    print('[LocationService] 尝试IP定位作为备用...');
+    try {
+      final cityName = await getLocationByIP();
+      if (cityName != null && cityName.isNotEmpty) {
+        print('[LocationService] IP定位成功: $cityName');
+        _cachedCity = cityName;
+        _saveCache(cityName);
+        return cityName;
+      }
+    } catch (e) {
+      print('[LocationService] IP定位失败: $e');
+    }
+
+    print('[LocationService] 所有定位方案均失败');
+    return null;
+  }
+
+  /// 保存缓存
+  Future<void> _saveCache(String city) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('cached_city', city);
+      await prefs.setInt('city_cache_time', DateTime.now().millisecondsSinceEpoch);
+    } catch (_) {}
   }
 }

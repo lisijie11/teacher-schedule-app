@@ -12,17 +12,17 @@ import androidx.core.app.ActivityCompat
 import android.util.Log
 
 /**
- * 网络定位服务 - 仅使用 WiFi + 移动流量基站定位（完全禁用 GPS）
+ * 网络定位服务 - 多Provider定位（优先网络，回退GPS）
  */
 object NetworkLocationService {
     private const val TAG = "NetworkLocationService"
-    private const val LOCATION_TIMEOUT = 15000L // 15秒超时
+    private const val LOCATION_TIMEOUT = 20000L // 20秒超时
 
     private var locationManager: LocationManager? = null
     private var locationListener: LocationListener? = null
 
     /**
-     * 获取网络定位（WiFi + 移动流量）
+     * 获取位置（优先网络定位，失败则尝试GPS）
      * @param context Context
      * @param callback 回调 (latitude, longitude) 或 null（失败时）
      */
@@ -31,36 +31,32 @@ object NetworkLocationService {
             locationManager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
 
             // 检查权限
-            if (ActivityCompat.checkSelfPermission(
-                    context,
-                    Manifest.permission.ACCESS_FINE_LOCATION
-                ) != PackageManager.PERMISSION_GRANTED &&
-                ActivityCompat.checkSelfPermission(
-                    context,
-                    Manifest.permission.ACCESS_COARSE_LOCATION
-                ) != PackageManager.PERMISSION_GRANTED
-            ) {
+            val hasFine = ActivityCompat.checkSelfPermission(
+                context, Manifest.permission.ACCESS_FINE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
+            val hasCoarse = ActivityCompat.checkSelfPermission(
+                context, Manifest.permission.ACCESS_COARSE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
+
+            if (!hasFine && !hasCoarse) {
                 Log.e(TAG, "没有定位权限")
                 callback(null, null)
                 return
             }
 
-            // 先检查网络定位是否可用
-            if (!locationManager!!.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
-                Log.e(TAG, "网络定位未启用")
-                callback(null, null)
+            // 检查是否有可用的定位Provider
+            val providers = locationManager!!.allProviders
+            Log.d(TAG, "可用的定位Provider: $providers")
+
+            // 1. 先尝试所有Provider的缓存位置（最快）
+            val cachedLocation = tryGetCachedLocation(hasFine, hasCoarse)
+            if (cachedLocation != null) {
+                Log.d(TAG, "使用缓存位置: ${cachedLocation.latitude}, ${cachedLocation.longitude} (${cachedLocation.provider})")
+                callback(cachedLocation.latitude, cachedLocation.longitude)
                 return
             }
 
-            // 1. 先尝试获取缓存位置（最快）
-            val lastKnown = locationManager!!.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
-            if (lastKnown != null) {
-                Log.d(TAG, "使用缓存网络位置: ${lastKnown.latitude}, ${lastKnown.longitude}")
-                callback(lastKnown.latitude, lastKnown.longitude)
-                return
-            }
-
-            // 2. 请求新的网络定位
+            // 2. 尝试实时定位（优先网络，回退GPS）
             var hasCallbacked = false
 
             locationListener = object : LocationListener {
@@ -68,23 +64,45 @@ object NetworkLocationService {
                     if (hasCallbacked) return
                     hasCallbacked = true
 
-                    Log.d(TAG, "网络定位成功: ${location.latitude}, ${location.longitude}")
+                    Log.d(TAG, "定位成功: ${location.latitude}, ${location.longitude} (${location.provider})")
                     callback(location.latitude, location.longitude)
-
-                    // 停止监听
                     stopLocationUpdates()
                 }
 
-                override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
-                override fun onProviderEnabled(provider: String) {}
-                override fun onProviderDisabled(provider: String) {}
+                override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {
+                    Log.d(TAG, "Provider状态变化: $provider, status=$status")
+                }
+                override fun onProviderEnabled(provider: String) {
+                    Log.d(TAG, "Provider启用: $provider")
+                }
+                override fun onProviderDisabled(provider: String) {
+                    Log.d(TAG, "Provider禁用: $provider")
+                }
             }
 
-            // 请求网络定位更新
+            // 优先尝试网络定位
+            var requestedProvider: String? = null
+            if (hasCoarse && locationManager!!.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
+                requestedProvider = LocationManager.NETWORK_PROVIDER
+                Log.d(TAG, "尝试网络定位...")
+            } else if (hasFine && locationManager!!.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
+                requestedProvider = LocationManager.GPS_PROVIDER
+                Log.d(TAG, "网络定位不可用，尝试GPS定位...")
+            } else if (hasCoarse && locationManager!!.isProviderEnabled(LocationManager.PASSIVE_PROVIDER)) {
+                requestedProvider = LocationManager.PASSIVE_PROVIDER
+                Log.d(TAG, "使用被动定位...")
+            }
+
+            if (requestedProvider == null) {
+                Log.e(TAG, "没有可用的定位Provider")
+                callback(null, null)
+                return
+            }
+
             locationManager!!.requestLocationUpdates(
-                LocationManager.NETWORK_PROVIDER,
-                1000L,  // 最小间隔 1 秒
-                1f,     // 最小距离 1 米
+                requestedProvider,
+                0L,  // 最小间隔 0 秒（立即）
+                0f,  // 最小距离 0 米
                 locationListener!!,
                 Looper.getMainLooper()
             )
@@ -93,16 +111,44 @@ object NetworkLocationService {
             android.os.Handler(Looper.getMainLooper()).postDelayed({
                 if (!hasCallbacked) {
                     hasCallbacked = true
-                    Log.e(TAG, "网络定位超时")
+                    Log.e(TAG, "定位超时（20秒）")
                     callback(null, null)
                     stopLocationUpdates()
                 }
             }, LOCATION_TIMEOUT)
 
         } catch (e: Exception) {
-            Log.e(TAG, "网络定位异常: ${e.message}")
+            Log.e(TAG, "定位异常: ${e.message}")
+            e.printStackTrace()
             callback(null, null)
         }
+    }
+
+    /**
+     * 尝试从所有Provider获取缓存位置
+     */
+    private fun tryGetCachedLocation(hasFine: Boolean, hasCoarse: Boolean): Location? {
+        val providers = listOfNotNull(
+            LocationManager.NETWORK_PROVIDER,
+            LocationManager.GPS_PROVIDER,
+            LocationManager.PASSIVE_PROVIDER
+        )
+
+        for (provider in providers) {
+            try {
+                val location = locationManager?.getLastKnownLocation(provider)
+                if (location != null) {
+                    // 检查位置是否在合理范围内（最近24小时）
+                    val age = System.currentTimeMillis() - location.time
+                    if (age < 24 * 60 * 60 * 1000) { // 24小时内
+                        return location
+                    }
+                }
+            } catch (e: Exception) {
+                Log.d(TAG, "获取 $provider 缓存失败: ${e.message}")
+            }
+        }
+        return null
     }
 
     /**
