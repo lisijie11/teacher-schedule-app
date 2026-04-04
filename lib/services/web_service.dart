@@ -1811,7 +1811,7 @@ class WebService {
         ${_userAvatarPath.isNotEmpty ? '<img class="topbar-avatar" src="/api/avatar" alt="avatar">' : '<div class="topbar-avatar-placeholder">👤</div>'}
         <div class="topbar-user-info">
           <span class="topbar-username">${_userName.isNotEmpty ? _userName : '教师'}</span>
-          <span class="topbar-date">$todayStr $todayName</span>
+          <span class="topbar-date">$todayStr $todayName${_weather != null && _weather!.location.isNotEmpty ? ' · 📍 ${_weather!.location}' : ''}</span>
         </div>
       </div>
       <div class="topbar-center">

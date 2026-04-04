@@ -36,16 +36,24 @@ android {
         applicationId "com.lisijie.teacher_schedule"
         minSdkVersion 21
         targetSdkVersion 34
-      versionCode 37
-      versionName "2.3.5"
+      versionCode 38
+      versionName "2.3.6"
         multiDexEnabled true
     }
 
     buildTypes {
         release {
             signingConfig signingConfigs.debug
-            minifyEnabled false
-            shrinkResources false
+            // 启用代码混淆和资源压缩
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+        debug {
+            // Debug 版本也启用优化以减小体积
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
 }
@@ -57,4 +65,6 @@ flutter {
 dependencies {
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.4'
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlin_version"
+    // Flutter 分架构打包需要
+    implementation 'com.google.android.play:core:1.10.3'
 }
