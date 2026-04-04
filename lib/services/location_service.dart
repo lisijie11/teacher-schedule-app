@@ -115,30 +115,36 @@ class LocationService {
   }
 
   /// 一键获取当前城市（纯IP定位，不依赖原生定位）
-  Future<String?> getCurrentCity() async {
-    // 优先使用内存缓存
-    if (_cachedCity != null) {
-      print('[LocationService] 使用内存缓存: $_cachedCity');
-      return _cachedCity;
+  /// @param forceRefresh 是否强制刷新（忽略缓存）
+  Future<String?> getCurrentCity({bool forceRefresh = false}) async {
+    // 如果不是强制刷新，优先使用缓存
+    if (!forceRefresh) {
+      // 优先使用内存缓存
+      if (_cachedCity != null) {
+        print('[LocationService] 使用内存缓存: $_cachedCity');
+        return _cachedCity;
+      }
+
+      // 尝试从SharedPreferences读取缓存
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final cached = prefs.getString('cached_city');
+        final cacheTime = prefs.getInt('city_cache_time');
+        if (cached != null && cacheTime != null) {
+          final cacheDate = DateTime.fromMillisecondsSinceEpoch(cacheTime);
+          if (DateTime.now().difference(cacheDate) < _cacheDuration) {
+            _cachedCity = cached;
+            print('[LocationService] 使用本地缓存: $cached');
+            return cached;
+          }
+        }
+      } catch (_) {}
     }
 
-    // 尝试从SharedPreferences读取缓存
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final cached = prefs.getString('cached_city');
-      final cacheTime = prefs.getInt('city_cache_time');
-      if (cached != null && cacheTime != null) {
-        final cacheDate = DateTime.fromMillisecondsSinceEpoch(cacheTime);
-        if (DateTime.now().difference(cacheDate) < _cacheDuration) {
-          _cachedCity = cached;
-          print('[LocationService] 使用本地缓存: $cached');
-          return cached;
-        }
-      }
-    } catch (_) {}
-
-    // 直接使用 IP 定位
-    print('[LocationService] 使用IP定位...');
+    // 清除旧缓存，强制重新定位
+    _cachedCity = null;
+    print('[LocationService] ${forceRefresh ? "强制" : ""}使用IP定位...');
+    
     try {
       final cityName = await getLocationByIP();
       if (cityName != null && cityName.isNotEmpty) {

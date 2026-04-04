@@ -1685,8 +1685,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               setInnerState(() => isLocating = true);
                               
                               try {
-                                // 添加超时保护
-                                final city = await LocationService.instance.getCurrentCity()
+                                // 强制刷新定位（忽略缓存）
+                                final city = await LocationService.instance.getCurrentCity(forceRefresh: true)
                                     .timeout(const Duration(seconds: 10), onTimeout: () => null);
                                 if (city != null && city.isNotEmpty) {
                                   setInnerState(() {

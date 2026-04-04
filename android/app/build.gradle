@@ -36,8 +36,8 @@ android {
         applicationId "com.lisijie.teacher_schedule"
         minSdkVersion 21
         targetSdkVersion 34
-      versionCode 40
-      versionName "2.3.8"
+      versionCode 41
+      versionName "2.3.9"
         multiDexEnabled true
     }
 
