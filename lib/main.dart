@@ -235,7 +235,7 @@ class _TeacherScheduleAppState extends State<TeacherScheduleApp> with WidgetsBin
       final userLocation = settings.get('userLocation', defaultValue: '');
       
       // 如果用户没有设置过位置，或者位置是默认值，则自动定位
-      if (userLocation.isEmpty || userLocation == '待定' || userLocation == '佛山') {
+      if (userLocation.isEmpty || userLocation == '待定' || userLocation == '定位中...') {
         print('[AutoLocation] 开始自动定位...');
         final city = await LocationService.instance.getCurrentCity();
         

@@ -7,9 +7,79 @@ class WeatherService {
   static final WeatherService instance = WeatherService._();
   WeatherService._();
 
-  // 默认位置：佛山
-  String _defaultLocation = '佛山';
+  // 默认位置（将在首次定位时自动更新）
+  String _defaultLocation = '定位中...';
   WeatherData? _cachedWeather;
+
+  // 地名中英文映射表（常见城市/区域）
+  static const Map<String, String> _locationTranslations = {
+    // 广东
+    'shanwei': '汕尾',
+    'downtown core': '城区',
+    'haifeng': '海丰',
+    'lufeng': '陆丰',
+    'luhe': '陆河',
+    'guangzhou': '广州',
+    'shenzhen': '深圳',
+    'foshan': '佛山',
+    'dongguan': '东莞',
+    'zhuhai': '珠海',
+    'zhongshan': '中山',
+    'huizhou': '惠州',
+    'jiangmen': '江门',
+    'zhaoqing': '肇庆',
+    'qingyuan': '清远',
+    'shaoguan': '韶关',
+    'heyuan': '河源',
+    'meizhou': '梅州',
+    'chaozhou': '潮州',
+    'jieyang': '揭阳',
+    'yangjiang': '阳江',
+    'yunfu': '云浮',
+    'maoming': '茂名',
+    'zhanjiang': '湛江',
+    'shantou': '汕头',
+    'shunde': '顺德',
+    'nanhai': '南海',
+    'panyu': '番禺',
+    'nansha': '南沙',
+
+    // 其他省份常见城市
+    'beijing': '北京',
+    'shanghai': '上海',
+    'tianjin': '天津',
+    'chongqing': '重庆',
+    'hangzhou': '杭州',
+    'nanjing': '南京',
+    'chengdu': '成都',
+    'wuhan': '武汉',
+    'xian': '西安',
+    'changsha': '长沙',
+    'zhengzhou': '郑州',
+    'jinan': '济南',
+    'qingdao': '青岛',
+    'dalian': '大连',
+    'shenyang': '沈阳',
+    'harbin': '哈尔滨',
+    'changchun': '长春',
+    'kunming': '昆明',
+    'guiyang': '贵阳',
+    'nanning': '南宁',
+    'haikou': '海口',
+    'sanya': '三亚',
+    'fuzhou': '福州',
+    'xiamen': '厦门',
+    'nanchang': '南昌',
+    'hefei': '合肥',
+    'taiyuan': '太原',
+    'shijiazhuang': '石家庄',
+    'lhasa': '拉萨',
+    'urumqi': '乌鲁木齐',
+    'hohhot': '呼和浩特',
+    'yinchuan': '银川',
+    'xining': '西宁',
+    'lanzhou': '兰州',
+  };
 
   // 天气描述中英文映射表
   static const Map<String, String> _weatherTranslations = {
@@ -101,6 +171,26 @@ class WeatherService {
     return english;
   }
 
+  /// 翻译地名为中文
+  String _translateLocation(String english) {
+    final lower = english.toLowerCase().trim();
+
+    // 精确匹配
+    if (_locationTranslations.containsKey(lower)) {
+      return _locationTranslations[lower]!;
+    }
+
+    // 包含匹配（如 "Shanwei, China" -> "汕尾"）
+    for (final entry in _locationTranslations.entries) {
+      if (lower.contains(entry.key)) {
+        return entry.value;
+      }
+    }
+
+    // 无法翻译则返回原文
+    return english;
+  }
+
   /// 获取天气数据
   Future<WeatherData?> fetchWeather({String? location}) async {
     try {
@@ -120,6 +210,32 @@ class WeatherService {
 
       final data = await response.transform(utf8.decoder).join();
       final json = jsonDecode(data);
+
+      // 获取 API 返回的地名并翻译
+      String apiLocation = city;
+      try {
+        final nearestArea = json['nearest_area']?[0];
+        if (nearestArea != null) {
+          // 组合 areaName + region（如 "Downtown Core, Shanwei"）
+          final areaName = nearestArea['areaName']?[0]?['value'] ?? '';
+          final region = nearestArea['region']?[0]?['value'] ?? '';
+
+          if (areaName.isNotEmpty) {
+            // 翻译地名
+            final translatedArea = _translateLocation(areaName);
+            final translatedRegion = _translateLocation(region);
+
+            // 组合：城区, 汕尾 或 汕尾
+            if (translatedRegion.isNotEmpty && translatedRegion != translatedArea) {
+              apiLocation = '$translatedArea, $translatedRegion';
+            } else {
+              apiLocation = translatedArea;
+            }
+          }
+        }
+      } catch (e) {
+        print('[WeatherService] 解析地名失败: $e');
+      }
 
       // 解析当前天气
       final current = json['current_condition']?[0];
@@ -239,7 +355,7 @@ class WeatherService {
       final travelAdvice = _getTravelAdvice(weatherTextRaw.toLowerCase(), temp);
 
       final weatherData = WeatherData(
-        location: city,
+        location: apiLocation,
         weatherText: weatherText,
         weatherIcon: weatherIcon,
         temp: temp,
