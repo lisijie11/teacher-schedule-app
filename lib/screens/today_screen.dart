@@ -231,7 +231,7 @@ class _TodayScreenState extends State<TodayScreen> with TickerProviderStateMixin
     }
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+      padding: const EdgeInsets.fromLTRB(24, 20, 24, 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -312,7 +312,7 @@ class _TodayScreenState extends State<TodayScreen> with TickerProviderStateMixin
           ],
 
           // 一键添加到日历按钮
-          const SizedBox(height: 16),
+          const SizedBox(height: 8),
           _buildAddToCalendarButton(context, isDark),
         ],
       ),
@@ -459,6 +459,7 @@ class _TodayScreenState extends State<TodayScreen> with TickerProviderStateMixin
     );
 
     // 4. 批量写入日历（静默，无弹窗）
+    final scheduleProvider = context.read<ScheduleProvider>();
     final result = await CalendarService.instance.addNextWeekCoursesTo(
       selectedCal.id!,
       courses,

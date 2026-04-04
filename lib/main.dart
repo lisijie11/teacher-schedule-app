@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:timezone/data/latest.dart' as tz;
@@ -10,11 +11,17 @@ import 'models/course_model.dart';
 import 'services/notification_service.dart';
 import 'services/holiday_service.dart';
 import 'services/widget_service.dart';
+import 'services/location_service.dart';
+import 'services/weather_service.dart';
 import 'screens/home_screen.dart';
+import 'screens/todo_screen.dart';
 import 'theme.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 
 // 小组件通信 Channel
 const MethodChannel _widgetChannel = MethodChannel('com.lisijie.teacher_schedule/widget');
+// 小组件路由 Channel
+const MethodChannel _routeChannel = MethodChannel('com.lisijie.teacher_schedule/widget_route');
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -179,8 +186,96 @@ int _parseTimeToMinutes(String time) {
   return 9 * 60;
 }
 
-class TeacherScheduleApp extends StatelessWidget {
+class TeacherScheduleApp extends StatefulWidget {
   const TeacherScheduleApp({super.key});
+
+  @override
+  State<TeacherScheduleApp> createState() => _TeacherScheduleAppState();
+}
+
+class _TeacherScheduleAppState extends State<TeacherScheduleApp> with WidgetsBindingObserver {
+  // 全局路由通知器，通知 HomeScreen 切换 Tab
+  final _routeNotifier = ValueNotifier<int>(0);
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    // 延迟一帧后检查（确保 HomeScreen 已创建并注册 PageController）
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkWidgetRoute();
+      _autoUpdateLocation();
+    });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _routeNotifier.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // 每次应用回到前台，都检查路由（处理 widget 从后台拉起的情况）
+    if (state == AppLifecycleState.resumed) {
+      _checkWidgetRoute();
+      _autoUpdateLocation();
+    }
+  }
+
+  /// 自动更新位置（后台启动时）
+  Future<void> _autoUpdateLocation() async {
+    try {
+      final settings = Hive.box('settings');
+      final autoLocation = settings.get('autoLocation', defaultValue: true);
+      
+      if (!autoLocation) return;
+      
+      final userLocation = settings.get('userLocation', defaultValue: '');
+      
+      // 如果用户没有设置过位置，或者位置是默认值，则自动定位
+      if (userLocation.isEmpty || userLocation == '待定' || userLocation == '佛山') {
+        print('[AutoLocation] 开始自动定位...');
+        final city = await LocationService.instance.getCurrentCity();
+        
+        if (city != null && city.isNotEmpty) {
+          await settings.put('userLocation', city);
+          print('[AutoLocation] 自动定位成功: $city');
+          
+          // 更新天气数据
+          await WeatherService.instance.fetchWeather(location: city);
+          
+          // 更新小组件
+          await WidgetService.updateWidget();
+        }
+      }
+    } catch (e) {
+      print('[AutoLocation] 自动定位失败: $e');
+    }
+  }
+
+  /// 检查小组件路由，点击不同小组件进入对应页面
+  Future<void> _checkWidgetRoute() async {
+    try {
+      final route = await _routeChannel.invokeMethod<String>('getRoute');
+      if (route != null && route.isNotEmpty && mounted) {
+        final newIndex = _routeToIndex(route);
+        _routeNotifier.value = newIndex;
+        print('[WidgetRoute] 路由: $route -> Tab $newIndex');
+      }
+    } catch (e) {
+      print('[WidgetRoute] 检查路由失败: $e');
+    }
+  }
+
+  int _routeToIndex(String route) {
+    switch (route) {
+      case "/schedule": return 1;
+      case "/todo":     return 2;
+      default:           return 0;  // /today
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -189,10 +284,24 @@ class TeacherScheduleApp extends StatelessWidget {
     return MaterialApp(
       title: '教师课表助手',
       debugShowCheckedModeBanner: false,
+      // 本地化支持（DatePicker 等组件需要）
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: const [
+        Locale('zh', 'CN'), // 中文
+        Locale('en', 'US'), // 英文
+      ],
+      locale: const Locale('zh', 'CN'), // 默认中文
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
       themeMode: themeProvider.themeMode,
-      home: const HomeScreen(), // 直接进入主界面，无需登录
+      home: HomeScreen(
+        initialIndex: 0,
+        routeNotifier: _routeNotifier,
+      ),
     );
   }
 }

@@ -12,6 +12,21 @@ class MainActivity : FlutterActivity() {
     private val CHANNEL = "com.teacher_schedule/hyper_island"
     private val SCHEDULE_DATA_CHANNEL = "com.lisijie.teacher_schedule/schedule_data"
     private val WIDGET_DATA_CHANNEL = "com.lisijie.teacher_schedule/widget_data"
+    private val ROUTE_CHANNEL = "com.lisijie.teacher_schedule/widget_route"
+
+    // 存储来自 widget 点击的路由（解决 Activity 复用时 Intent 不更新的问题）
+    private var pendingRoute: String = ""
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        // Activity 被 widget 拉起时，onNewIntent 才是真正的最新 Intent
+        this.intent = intent
+        val route = intent.getStringExtra("route") ?: ""
+        if (route.isNotEmpty()) {
+            pendingRoute = route
+            android.util.Log.d("WidgetRoute", "onNewIntent 捕获路由: $route")
+        }
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -30,8 +45,22 @@ class MainActivity : FlutterActivity() {
             }
         }
 
+        // ===== 小组件路由 Channel =====
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, ROUTE_CHANNEL).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "getRoute" -> {
+                    // 优先读 onNewIntent 捕获的路由，其次读原始 Intent
+                    val route = pendingRoute.ifEmpty { intent.getStringExtra("route") ?: "" }
+                    android.util.Log.d("WidgetRoute", "getRoute 返回: '$route' (pending=$pendingRoute)")
+                    result.success(route)
+                    // 清除已消费的路由
+                    pendingRoute = ""
+                }
+                else -> result.notImplemented()
+            }
+        }
+
         // ===== 小组件数据同步 Channel =====
-        // Flutter 直接写入 HomeWidgetPlugin SharedPreferences，确保 Kotlin 端能读取到
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, WIDGET_DATA_CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
                 "saveWidgetData" -> {

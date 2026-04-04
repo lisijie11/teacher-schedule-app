@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../models/schedule_model.dart';
 import '../models/course_model.dart';
+import '../models/todo_model.dart';
 
 // Android 原生通道
 const _nativeChannel = MethodChannel('com.lisijie.teacher_schedule/schedule_data');
@@ -231,6 +232,9 @@ class WidgetService {
         print('[WidgetService] 写入 snapshot 失败: $e');
       }
 
+      // ── 同步待办事项数据到原生端（供待办小部件使用）──
+      await _saveTodoDataToNative();
+
       // ── 同步作息表 + 课程数据到原生端 ──
       await _saveAllCoursesToNative();
 
@@ -307,6 +311,40 @@ class WidgetService {
       } catch (_) {}
     } catch (e) {
       print('[WidgetService] 同步失败: $e');
+    }
+  }
+
+  /// 把待办事项数据写入原生 SharedPreferences（供待办小部件使用）
+  static Future<void> _saveTodoDataToNative() async {
+    try {
+      final todoBox = Hive.box<TodoItem>('todos');
+      final allTodos = todoBox.values.toList();
+      final pending = allTodos.where((t) => !t.isDone).toList();
+      final doneCount = allTodos.where((t) => t.isDone).length;
+      final total = allTodos.length;
+      final progress = total == 0 ? 0.0 : doneCount / total;
+
+      // 取前5条未完成待办
+      final topPending = pending.take(5).map((t) => {
+        'title': t.title,
+        'priority': t.priority,
+      }).toList();
+
+      final json = jsonEncode({
+        'totalCount': total,
+        'doneCount': doneCount,
+        'pendingCount': pending.length,
+        'progress': progress,
+        'items': topPending,
+      });
+
+      await _widgetChannel.invokeMethod('saveWidgetData', {
+        'key': 'todo_json',
+        'value': json,
+      });
+      print('[WidgetService] 待办数据已写入: ${pending.length}待办 ${doneCount}完成');
+    } catch (e) {
+      print('[WidgetService] 写入待办数据失败: $e');
     }
   }
 }

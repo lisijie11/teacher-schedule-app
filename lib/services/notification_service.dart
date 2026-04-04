@@ -399,6 +399,12 @@ class NotificationService {
     required String courseName,
     required String location,
   }) async {
+    // 检查学期是否已结束，如果超过总周数则不发送提醒
+    if (_isSemesterOver()) {
+      print('[NotificationService] 学期已结束，跳过课程提醒');
+      return;
+    }
+
     // 取消之前的提醒
     await cancelClassReminders();
 
@@ -551,6 +557,27 @@ class NotificationService {
   Future<void> cancelClassReminders() async {
     for (int id = 100; id < 200; id++) {
       await _plugin.cancel(id);
+    }
+  }
+
+  /// 检查学期是否已结束（当前周数 > 学期总周数）
+  bool _isSemesterOver() {
+    try {
+      final settings = Hive.box('settings');
+      final semesterStartStr = settings.get('semesterStartDate', defaultValue: '');
+      if (semesterStartStr.isEmpty) return false;
+      final semesterStart = DateTime.parse(semesterStartStr);
+      final totalWeeks = settings.get('totalWeeks', defaultValue: 20);
+
+      final now = DateTime.now();
+      final daysSinceStart = now.difference(semesterStart).inDays;
+      final startWeekday = semesterStart.weekday; // 1=周一
+      final adjustedDays = daysSinceStart + (startWeekday - 1);
+      final weekNumber = (adjustedDays / 7).floor() + 1;
+
+      return weekNumber > totalWeeks;
+    } catch (_) {
+      return false;
     }
   }
 

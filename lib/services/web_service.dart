@@ -8,6 +8,7 @@ import 'package:shelf/shelf.dart';
 import 'package:shelf/shelf_io.dart' as shelf_io;
 import 'package:shelf_router/shelf_router.dart';
 
+import 'package:hive_flutter/hive_flutter.dart';
 import '../models/course_model.dart';
 import '../models/todo_model.dart';
 
@@ -113,6 +114,7 @@ class WebService {
   // 用户信息
   String _userName = '';
   String _userAvatarPath = '';
+  DateTime _semesterStartDate = DateTime.now(); // 学期起始日，默认当前日期
 
   // 获取服务器地址
   String? get serverUrl => _serverUrl;
@@ -302,6 +304,41 @@ class WebService {
   void updateUserInfo(String name, String avatarPath) {
     _userName = name;
     _userAvatarPath = avatarPath;
+    // 同步读取学期起始日
+    _loadSemesterStartDate();
+  }
+
+  /// 从 Hive settings 读取学期起始日
+  void _loadSemesterStartDate() {
+    try {
+      final box = Hive.box('settings');
+      final dateStr = box.get('semesterStartDate', defaultValue: '');
+      if (dateStr.isNotEmpty) {
+        _semesterStartDate = DateTime.parse(dateStr);
+      } else {
+        // 智能推断学期起始日
+        final now = DateTime.now();
+        if (now.month >= 9) {
+          // 9-12月：秋季学期，起始日为当年9月1日
+          _semesterStartDate = DateTime(now.year, 9, 1);
+        } else if (now.month >= 3) {
+          // 3-8月：春季学期，起始日为当年3月1日
+          _semesterStartDate = DateTime(now.year, 3, 1);
+        } else {
+          // 1-2月：上一年秋季学期
+          _semesterStartDate = DateTime(now.year - 1, 9, 1);
+        }
+      }
+    } catch (_) {
+      final now = DateTime.now();
+      if (now.month >= 9) {
+        _semesterStartDate = DateTime(now.year, 9, 1);
+      } else if (now.month >= 3) {
+        _semesterStartDate = DateTime(now.year, 3, 1);
+      } else {
+        _semesterStartDate = DateTime(now.year - 1, 9, 1);
+      }
+    }
   }
 
   /// CORS 中间件
@@ -323,7 +360,7 @@ class WebService {
     'Access-Control-Allow-Headers': 'Origin, Content-Type',
   };
 
-  /// 生成 Web 页面
+  /// 生成 Web 页面（重构版）
   String _generateWebPage() {
     final now = DateTime.now();
     final todayWeekday = now.weekday;
@@ -333,18 +370,103 @@ class WebService {
     final todayCourses = _courses.where((c) => c.weekday == todayWeekday).toList();
     todayCourses.sort((a, b) => a.startTime.compareTo(b.startTime));
 
-    // 构建 7×4 课程网格
+    // ========== 统计信息计算 ==========
+    final totalWeeklyCourses = _courses.length;
+    int finishedTodayCount = 0;
+    int pendingTodayCount = 0;
+    for (final course in todayCourses) {
+      final progress = _calculateProgress(course.startTime, course.endTime);
+      if (progress >= 100) finishedTodayCount++;
+      else if (progress < 0) pendingTodayCount++;
+    }
+    final activeTodayCount = todayCourses.length - finishedTodayCount - pendingTodayCount;
+    // 已上课时：本周已过去的课 + 今天已完成的
+    int completedTotal = 0;
+    for (int d = 1; d < todayWeekday; d++) {
+      completedTotal += _courses.where((c) => c.weekday == d).length;
+    }
+    completedTotal += finishedTodayCount;
+    final remainingTotal = totalWeeklyCourses - completedTotal - activeTodayCount;
+
+    // ========== 计算当前是第几周 ==========
+    // 使用用户设置的学期起始日
+    final semesterStart = _semesterStartDate;
+    final daysSinceStart = now.difference(semesterStart).inDays;
+    // 周一为一周起始，调整偏移
+    final startWeekday = semesterStart.weekday; // 1=周一
+    final adjustedDays = daysSinceStart + (startWeekday - 1);
+    final weekNumber = (adjustedDays / 7).floor() + 1;
+
+    // 读取学期总周数
+    int totalWeeks = 20;
+    try {
+      final box = Hive.box('settings');
+      totalWeeks = box.get('totalWeeks', defaultValue: 20);
+    } catch (_) {}
+    final isSemesterOver = weekNumber > totalWeeks;
+
+    // ========== 构建 7×4 课程网格（含天气行） ==========
     String scheduleGridHtml = '';
+
+    // 构建天气行数据：按 weekday(1-7) 映射天气（本周7天）
+    Map<int, DailyForecast?> weatherMap = {};
+    if (_weather != null && _weather!.forecast.isNotEmpty) {
+      // 策略：forecast 数据从今天开始排列（weather_service 的逻辑）
+      // 本周每天对应 forecast 的偏移量
+      final monday = now.subtract(Duration(days: now.weekday - 1));
+      for (int i = 0; i < 7; i++) {
+        final dayDate = monday.add(Duration(days: i));
+        final dayOffset = dayDate.difference(now).inDays;
+        // 计算在 forecast 数组中的索引
+        int forecastIndex = dayOffset;
+        // 如果是过去的日期（dayOffset < 0），用第0个；如果超出范围，用最后一个
+        if (forecastIndex < 0) forecastIndex = 0;
+        if (forecastIndex >= _weather!.forecast.length) {
+          forecastIndex = _weather!.forecast.length - 1;
+        }
+        if (forecastIndex >= 0 && forecastIndex < _weather!.forecast.length) {
+          weatherMap[dayDate.weekday] = _weather!.forecast[forecastIndex];
+        }
+      }
+    }
+
     for (int day = 1; day <= 7; day++) {
       scheduleGridHtml += '<div class="schedule-col ${day == todayWeekday ? 'today' : ''}">';
       scheduleGridHtml += '<div class="col-header">${weekdayNames[day]}</div>';
+
+      // 天气行（增强版：图标 + 温度范围 + 天气描述）
+      final dayWeather = weatherMap[day];
+      if (dayWeather != null) {
+        scheduleGridHtml += '''
+          <div class="weather-row" title="${_escapeAttr(dayWeather.weatherText)} ${dayWeather.tempMin}°~${dayWeather.tempMax}°">
+            <span class="weather-icon">${dayWeather.weatherIcon}</span>
+            <span class="weather-info">
+              <span class="weather-temp">${dayWeather.tempMin}~${dayWeather.tempMax}°</span>
+              <span class="weather-desc">${dayWeather.weatherText}</span>
+            </span>
+          </div>
+        ''';
+      } else if (_weather != null) {
+        scheduleGridHtml += '<div class="weather-row weather-empty"><span class="weather-icon">--</span><span class="weather-temp">--</span></div>';
+      } else {
+        scheduleGridHtml += '<div class="weather-row"></div>';
+      }
+
       for (int period = 1; period <= 4; period++) {
         final course = _courses.where((c) => c.weekday == day && c.periodIndex == period).firstOrNull;
         if (course != null) {
           final colorHex = '#${course.color.value.toRadixString(16).padLeft(8, '0').substring(2)}';
           final textColor = _getContrastColor(course.color);
+          final periodName = _getPeriodName(course.periodIndex);
           scheduleGridHtml += '''
-            <div class="grid-cell course" style="--cell-color: $colorHex; --text-color: $textColor">
+            <div class="grid-cell course"
+                 style="--cell-color: $colorHex; --text-color: $textColor;"
+                 data-course-name="${_escapeAttr(course.courseName)}"
+                 data-course-time="${course.startTime}-${course.endTime}"
+                 data-course-room="${_escapeAttr(course.classroom)}"
+                 data-course-period="$periodName"
+                 data-course-weekday="${weekdayNames[day]}"
+                 data-course-note="${_escapeAttr(course.note ?? '')}">
               <span class="cell-name">${course.courseName}</span>
               ${course.classroom.isNotEmpty ? '<span class="cell-room">${course.classroom}</span>' : ''}
             </div>
@@ -356,7 +478,7 @@ class WebService {
       scheduleGridHtml += '</div>';
     }
 
-    // 构建今日课程
+    // ========== 构建今日课程 ==========
     String todayCoursesHtml = '';
     if (todayCourses.isEmpty) {
       todayCoursesHtml = '''
@@ -385,10 +507,14 @@ class WebService {
         }
 
         todayCoursesHtml += '''
-          <div class="today-item ${isActive ? 'active' : ''} ${isFinished ? 'finished' : ''}" style="--accent: $colorHex">
+          <div class="today-item ${isActive ? 'active' : ''} ${isFinished ? 'finished' : ''}"
+               style="--accent: $colorHex"
+               data-course-note="${_escapeAttr(course.note ?? '')}"
+               data-course-room-detail="${_escapeAttr(course.classroom)}"
+               data-course-progress="$progress">
             <div class="item-content">
               <div class="item-left">
-                <div class="item-name">$statusLabel</div>
+                <div class="item-name">$statusLabel ${course.courseName}</div>
                 <div class="item-room">${course.classroom.isEmpty ? '-' : course.classroom}</div>
               </div>
               <div class="item-right">
@@ -396,8 +522,19 @@ class WebService {
                 <span class="item-time">${course.startTime}-${course.endTime}</span>
               </div>
             </div>
+            <div class="item-expandable">
+              <div class="expand-note">${(course.note?.isNotEmpty ?? false) ? course.note : '暂无备注'}</div>
+              <div class="expand-location">📍 ${course.classroom.isEmpty ? '未指定教室' : course.classroom}</div>
+              ${isActive ? '''
+                <div class="expand-progress">
+                  <div class="progress-track"><div class="progress-fill" style="width:${progress}%"></div></div>
+                  <span class="progress-num">$progress%</span>
+                </div>
+                <div class="expand-remaining">⏱️ 剩余 ${_getRemainingTime(course.endTime)}</div>
+              ''' : ''}
+            </div>
             ${isActive ? '''
-              <div class="item-progress">
+              <div class="item-progress-bar">
                 <div class="progress-track"><div class="progress-fill" style="width:${progress}%"></div></div>
                 <span class="progress-num">$progress%</span>
               </div>
@@ -408,7 +545,7 @@ class WebService {
       }
     }
 
-    // 构建待办事项
+    // ========== 构建待办事项 ==========
     final pendingTodos = _todos.where((t) => !t.isDone).take(4).toList();
     final completedTodos = _todos.where((t) => t.isDone).take(2).toList();
     String todosHtml = '';
@@ -427,8 +564,8 @@ class WebService {
         if (todo.priority == 2) { priorityClass = 'urgent'; priorityIcon = '🔴'; }
         else if (todo.priority == 1) { priorityClass = 'important'; priorityIcon = '⚡'; }
         todosHtml += '''
-          <div class="todo-item $priorityClass">
-            <div class="todo-check"></div>
+          <div class="todo-item $priorityClass" data-todo-id="${todo.id}">
+            <div class="todo-check"><span class="check-icon"></span></div>
             <span class="todo-text">$priorityIcon${todo.title}</span>
           </div>
         ''';
@@ -437,77 +574,13 @@ class WebService {
         todosHtml += '<div class="todo-section-title">已完成</div>';
         for (final todo in completedTodos) {
           todosHtml += '''
-            <div class="todo-item done">
-              <div class="todo-check checked"></div>
+            <div class="todo-item done" data-todo-id="${todo.id}">
+              <div class="todo-check checked"><span class="check-icon">✓</span></div>
               <span class="todo-text">${todo.title}</span>
             </div>
           ''';
         }
       }
-    }
-
-    // 天气数据 - 紧凑单行版
-    String weatherHtml = '';
-    if (_weather != null) {
-      // 计算降水概率最高的值
-      final maxPrecip = _weather!.hourlyForecast.isNotEmpty
-          ? _weather!.hourlyForecast.map((h) => h.precipProbability).reduce((a, b) => a > b ? a : b)
-          : 0;
-      final precipText = maxPrecip > 0 ? '${maxPrecip.toInt()}%' : '无';
-
-      // 7天预报 - 紧凑文字版
-      String weeklyCompactHtml = '';
-      for (final f in _weather!.forecast.take(7)) {
-        weeklyCompactHtml += '''
-          <span class="week-compact-item">
-            <span class="week-compact-day">${f.weekday}</span>
-            <span class="week-compact-icon">${f.weatherIcon}</span>
-            <span class="week-compact-temp">${f.tempMax}°</span>
-          </span>
-        ''';
-      }
-
-        // 合并建议 - 分开存储用于tooltip
-      final nextCourse = _getNextCourse(todayCourses);
-      final adviceFull = '${_weather!.travelAdvice} · ${_weather!.clothingAdvice}${nextCourse != null ? ' · 下一节: ${nextCourse.courseName}' : ''}';
-      final adviceShort = '建议: ${_weather!.travelAdvice}';
-
-      weatherHtml = '''
-        <!-- 当前天气 -->
-        <div class="current-weather">
-          <span class="weather-icon-lg">${_weather!.weatherIcon}</span>
-          <div class="weather-temp-main">
-            <span class="temp-num">${_weather!.temp}</span>
-            <span class="temp-unit">°C</span>
-          </div>
-          <span class="weather-desc">${_weather!.weatherText}</span>
-        </div>
-
-        <!-- 降水信息 -->
-        <div class="precip-info">
-          <span class="precip-icon">💧</span>
-          <span>降水$precipText</span>
-        </div>
-
-        <!-- 7天预报 -->
-        <div class="weekly-compact">
-          $weeklyCompactHtml
-        </div>
-
-        <!-- 上课建议 - 带tooltip -->
-        <div class="advice-compact" data-tooltip="$adviceFull">
-          <span class="advice-icon">💡</span>
-          <span class="advice-text">$adviceShort</span>
-          <div class="advice-tooltip">$adviceFull</div>
-        </div>
-      ''';
-    } else {
-      weatherHtml = '''
-        <div class="module-empty">
-          <span class="empty-icon">🌤️</span>
-          <span class="empty-text">天气数据加载中...</span>
-        </div>
-      ''';
     }
 
     // 状态判断
@@ -580,7 +653,7 @@ class WebService {
       transition: background 0.3s, color 0.3s;
     }
 
-    /* 主容器 - 可滚动布局 */
+    /* ===== 页面加载动画 ===== */
     .main-container {
       max-width: 1400px;
       margin: 0 auto;
@@ -588,9 +661,21 @@ class WebService {
       display: flex;
       flex-direction: column;
       gap: 16px;
+      animation: pageLoadIn 0.6s ease-out both;
     }
 
-    /* 顶部状态栏 */
+    @keyframes pageLoadIn {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    /* ===== 顶部状态栏 ===== */
     .topbar {
       display: flex;
       align-items: center;
@@ -656,9 +741,36 @@ class WebService {
       margin-right: 12px;
     }
 
+    /* 时间冒号闪烁 */
+    .time-colon {
+      animation: colonBlink 1s step-end infinite;
+    }
+
+    @keyframes colonBlink {
+      0%, 49% { opacity: 1; }
+      50%, 100% { opacity: 0.3; }
+    }
+
     .topbar-center {
       flex: 1;
       text-align: center;
+    }
+
+    /* 统计信息条 */
+    .stats-bar {
+      font-size: 12px;
+      color: var(--text-secondary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      line-height: 1.6;
+    }
+
+    .stat-num {
+      font-weight: 700;
+      color: var(--primary);
     }
 
     .topbar-status {
@@ -693,6 +805,7 @@ class WebService {
     .theme-toggle:active { transform: scale(0.95); }
 
 
+    /* ===== 主内容布局 ===== */
     .top-row {
       display: grid;
       grid-template-columns: 280px 1fr;
@@ -768,13 +881,78 @@ class WebService {
       font-weight: 600;
     }
 
-    /* 课表标题后的古诗词 */
+    /* ===== 诗词区域（今日诗词API） ===== */
     .schedule-quote {
-      font-size: 12px;
-      color: var(--text-hint);
-      font-style: italic;
+      font-size: 14px;
       margin-left: auto;
-      transition: opacity 0.5s;
+      cursor: pointer;
+      transition: opacity 0.3s ease;
+      position: relative;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      display: inline-block;
+      align-items: center;
+      gap: 4px;
+      user-select: none;
+      -webkit-user-select: none;
+      white-space: nowrap;
+      max-width: 280px;
+      overflow: hidden;
+      vertical-align: middle;
+    }
+
+    /* 诗词内容容器——用于实现 marquee 滚动效果 */
+    .schedule-quote .quote-content {
+      display: inline-block;
+      animation: marqueeScroll 10s linear infinite;
+    }
+
+    /* Marquee 跑马灯效果：文字从右向左平滑滚入 */
+    @keyframes marqueeScroll {
+      0% { transform: translateX(100%); }
+      100% { transform: translateX(-100%); }
+    }
+
+    .schedule-quote:hover {
+      filter: brightness(1.15);
+    }
+
+    .schedule-quote:hover .quote-content {
+      animation-play-state: paused; /* 悬停时暂停滚动 */
+    }
+
+    .schedule-quote.loading {
+      opacity: 0.7;
+    }
+
+    .quote-refresh-icon {
+      opacity: 1;
+      transform: rotate(180deg);
+    }
+
+    .quote-refresh-icon {
+      font-size: 11px;
+      opacity: 0;
+      transition: all 0.3s ease;
+      -webkit-text-fill-color: initial;
+      color: #667eea;
+    }
+
+    .schedule-quote.loading .quote-refresh-icon {
+      display: none;
+    }
+
+    @keyframes quoteSpin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    .schedule-quote.fetching .quote-refresh-icon {
+      animation: quoteSpin 0.8s linear infinite;
+      display: inline-block;
+      opacity: 1 !important;
     }
 
     .card-body {
@@ -825,9 +1003,9 @@ class WebService {
       vertical-align: middle;
     }
 
-    .status-dot.pending { background: #3B82F6; }  /* 蓝色 - 未开始 */
-    .status-dot.active { background: #F59E0B; animation: dotPulse 1.5s infinite; }  /* 黄色 - 上课中 */
-    .status-dot.finished { background: #10B981; }  /* 绿色 - 已结束 */
+    .status-dot.pending { background: #3B82F6; }
+    .status-dot.active { background: #F59E0B; animation: dotPulse 1.5s infinite; }
+    .status-dot.finished { background: #10B981; }
 
     @keyframes dotPulse {
       0%, 100% { opacity: 1; transform: scale(1); }
@@ -877,17 +1055,17 @@ class WebService {
     .item-time { font-size: 11px; opacity: 0.8; }
     .item-name { font-size: 14px; font-weight: 600; }
     .item-room { font-size: 12px; opacity: 0.7; margin-top: 2px; }
-    .item-progress { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+    .item-progress-bar { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
     .progress-track { flex: 1; height: 4px; background: rgba(255,255,255,0.3); border-radius: 2px; }
-    .progress-fill { 
-      height: 100%; 
-      background: white; 
-      border-radius: 2px; 
+    .progress-fill {
+      height: 100%;
+      background: white;
+      border-radius: 2px;
       transition: width 0.5s;
       position: relative;
       overflow: hidden;
     }
-    
+
     .progress-fill::after {
       content: '';
       position: absolute;
@@ -898,19 +1076,80 @@ class WebService {
       background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
       animation: shimmer 1.5s infinite;
     }
-    
+
     @keyframes shimmer {
       0% { transform: translateX(-100%); }
       100% { transform: translateX(100%); }
     }
-    
+
     .progress-num { font-size: 12px; font-weight: 600; min-width: 35px; text-align: right; }
     .item-remaining { font-size: 11px; opacity: 0.8; margin-top: 2px; }
 
-    /* 待办卡片 */
+    /* ===== 今日课程展开详情 ===== */
+    .item-expandable {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+                  opacity 0.25s ease,
+                  padding 0.35s ease;
+      opacity: 0;
+      padding: 0;
+    }
+
+    .today-item.expanded .item-expandable {
+      max-height: 200px;
+      opacity: 1;
+      padding: 8px 0 4px;
+    }
+
+    .expand-note {
+      font-size: 12px;
+      color: var(--text-secondary);
+      line-height: 1.5;
+      padding: 6px 10px;
+      background: var(--bg-secondary);
+      border-radius: 6px;
+      margin-bottom: 6px;
+    }
+
+    .expand-location {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--primary);
+      margin-bottom: 6px;
+    }
+
+    .expand-progress {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 6px;
+    }
+
+    .expand-progress .progress-track {
+      flex: 1;
+      height: 6px;
+      background: var(--bg-secondary);
+      border-radius: 3px;
+    }
+
+    .expand-progress .progress-fill {
+      background: linear-gradient(90deg, var(--primary), var(--primary-light));
+      height: 100%;
+      border-radius: 3px;
+      transition: width 0.5s;
+    }
+
+    .expand-remaining {
+      font-size: 11px;
+      color: var(--warning);
+      margin-top: 4px;
+    }
+
+    /* ===== 待办卡片 ===== */
     .todo-card .card-body { display: flex; flex-direction: column; gap: 8px; }
 
-    /* 待办项 - 增加交互 */
+    /* 待办项 - 增加交互（点击划线） */
     .todo-item {
       display: flex;
       align-items: center;
@@ -918,7 +1157,7 @@ class WebService {
       padding: 10px 12px;
       background: var(--bg-secondary);
       border-radius: var(--radius-sm);
-      transition: all 0.2s ease;
+      transition: all 0.25s ease;
       cursor: pointer;
     }
 
@@ -929,16 +1168,25 @@ class WebService {
 
     .todo-item.urgent { border-left: 4px solid var(--danger); }
     .todo-item.important { border-left: 4px solid var(--warning); }
-    .todo-item.done { opacity: 0.5; }
-    .todo-item.done .todo-text { text-decoration: line-through; }
+    .todo-item.done {
+      opacity: 0.55;
+    }
+    .todo-item.done .todo-text {
+      text-decoration: line-through;
+      color: var(--text-hint);
+    }
 
     .todo-check {
-      width: 18px;
-      height: 18px;
+      width: 20px;
+      height: 20px;
       border: 2px solid var(--border);
       border-radius: 50%;
       flex-shrink: 0;
-      transition: all 0.2s ease;
+      transition: all 0.25s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
     }
 
     .todo-check.checked {
@@ -946,15 +1194,26 @@ class WebService {
       border-color: var(--success);
     }
 
-    .todo-check:hover {
-      border-color: var(--primary);
-      transform: scale(1.1);
+    .check-icon {
+      font-size: 11px;
+      color: transparent;
+      font-weight: 700;
+      transition: color 0.2s ease;
     }
 
-    .todo-text { font-size: 13px; flex: 1; }
+    .todo-item.done .check-icon {
+      color: white;
+    }
+
+    .todo-check:hover {
+      border-color: var(--primary);
+      transform: scale(1.15);
+    }
+
+    .todo-text { font-size: 13px; flex: 1; transition: all 0.25s ease; }
     .todo-section-title { font-size: 11px; color: var(--text-hint); padding: 4px 0; }
 
-    /* 课表卡片 */
+    /* ===== 课表卡片 ===== */
     .schedule-card {
       display: flex;
       flex-direction: column;
@@ -966,13 +1225,28 @@ class WebService {
       gap: 6px;
       padding: 12px;
       flex: 1;
-      min-height: 300px;
+      min-height: 360px;
     }
 
     .schedule-col {
       display: flex;
       flex-direction: column;
       gap: 6px;
+      /* 斑马纹背景 - 非常淡的奇偶列差异 */
+    }
+
+    .schedule-col:nth-child(odd) {
+      background: transparent;
+    }
+
+    .schedule-col:nth-child(even) {
+      background: rgba(128, 128, 128, 0.02);
+      border-radius: 8px;
+      padding: 2px;
+    }
+
+    [data-theme="dark"] .schedule-col:nth-child(even) {
+      background: rgba(255, 255, 255, 0.01);
     }
 
     .schedule-col.today .col-header {
@@ -988,6 +1262,138 @@ class WebService {
       padding: 8px 0;
     }
 
+    /* ===== 天气行（在课表 header 下方，增强版） ===== */
+    .weather-row {
+      font-size: 11px;
+      color: var(--text-secondary);
+      padding: 6px 4px;
+      text-align: center;
+      border-bottom: 1px dashed var(--border);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      min-height: 48px;
+      justify-content: center;
+      border-radius: 8px;
+      background: rgba(29, 155, 240, 0.04);
+      transition: all 0.2s ease;
+    }
+
+    .weather-row:hover {
+      background: rgba(29, 155, 240, 0.08);
+      transform: scale(1.02);
+    }
+
+    [data-theme="dark"] .weather-row {
+      background: rgba(56, 189, 248, 0.06);
+    }
+
+    [data-theme="dark"] .weather-row:hover {
+      background: rgba(56, 189, 248, 0.1);
+    }
+
+    .weather-icon {
+      font-size: 18px;
+      line-height: 1;
+    }
+
+    .weather-info {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1px;
+    }
+
+    .weather-temp {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-primary);
+      letter-spacing: 0.3px;
+    }
+
+    .weather-desc {
+      font-size: 10px;
+      color: var(--text-tertiary);
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .weather-empty {
+      opacity: 0.4;
+      font-style: italic;
+    }
+
+    /* ===== 周数标签 ===== */
+    .week-badge {
+      display: inline-flex;
+      align-items: center;
+      font-size: 12px;
+      font-weight: 600;
+      color: #fff;
+      background: linear-gradient(135deg, var(--primary), #38BDF8);
+      padding: 2px 10px;
+      border-radius: 12px;
+      margin-left: 8px;
+      vertical-align: middle;
+      letter-spacing: 0.5px;
+      box-shadow: 0 2px 6px rgba(29, 155, 240, 0.25);
+    }
+
+    /* 学期已结束标签 */
+    .week-badge.week-over {
+      background: linear-gradient(135deg, #E53935, #FF6B6B);
+      box-shadow: 0 2px 6px rgba(229, 57, 53, 0.3);
+      animation: pulse-over 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse-over {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.75; }
+    }
+
+    /* ===== 学期结束遮罩 ===== */
+    .semester-over-overlay {
+      position: relative;
+      margin: 8px 12px;
+      border-radius: var(--radius);
+      background: linear-gradient(135deg, rgba(229,57,53,0.06), rgba(255,107,107,0.04));
+      border: 2px dashed rgba(229,57,53,0.25);
+      padding: 24px 16px;
+      text-align: center;
+    }
+
+    [data-theme="dark"] .semester-over-overlay {
+      background: linear-gradient(135deg, rgba(229,57,53,0.1), rgba(255,107,107,0.05));
+      border-color: rgba(229,57,53,0.3);
+    }
+
+    .semester-over-content {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .semester-over-icon {
+      font-size: 32px;
+      line-height: 1;
+    }
+
+    .semester-over-text {
+      font-size: 17px;
+      font-weight: 700;
+      color: #E53935;
+      letter-spacing: 2px;
+    }
+
+    .semester-over-sub {
+      font-size: 12px;
+      color: var(--text-tertiary);
+    }
+
     .grid-cell {
       flex: 1;
       border-radius: var(--radius-sm);
@@ -1000,6 +1406,7 @@ class WebService {
       min-height: 60px;
       transition: all 0.2s ease;
       cursor: pointer;
+      position: relative;
     }
 
     .grid-cell:hover {
@@ -1027,6 +1434,43 @@ class WebService {
       box-shadow: 0 4px 16px rgba(0,0,0,0.2);
     }
 
+    /* ===== 课程格子 tooltip（CSS伪元素实现）===== */
+    .grid-cell.course[data-course-name]:hover::after {
+      content: attr(data-course-name) "\\a" attr(data-course-time) "\\a" attr(data-course-room);
+      position: absolute;
+      bottom: calc(100% + 8px);
+      left: 50%;
+      transform: translateX(-50%) translateY(5px);
+      background: var(--text-primary);
+      color: var(--bg-card);
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-size: 11px;
+      white-space: pre-wrap;
+      line-height: 1.6;
+      z-index: 200;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+      text-align: center;
+      min-width: 120px;
+      pointer-events: none;
+      opacity: 1;
+      visibility: visible;
+      transition: all 0.2s ease;
+      font-weight: normal;
+    }
+
+    .grid-cell.course:hover::before {
+      content: '';
+      position: absolute;
+      bottom: calc(100% + 2px);
+      left: 50%;
+      transform: translateX(-50%);
+      border: 6px solid transparent;
+      border-top-color: var(--text-primary);
+      z-index: 201;
+      pointer-events: none;
+    }
+
     .cell-name {
       font-size: 12px;
       font-weight: 600;
@@ -1048,169 +1492,102 @@ class WebService {
       max-width: 100%;
     }
 
-    /* 天气卡片 - 横向布局 */
-    .weather-card {
-      flex-shrink: 0;
-      min-height: 180px;
-    }
-
-    /* 天气卡片 - 紧凑单行布局 */
-    .weather-card {
-      min-height: unset;
-    }
-
-    .weather-card .card-body {
-      padding: 12px 16px;
+    /* ===== 模态框（课程详情弹窗） ===== */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.5);
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+      z-index: 9999;
       display: flex;
       align-items: center;
-      gap: 20px;
-      overflow: hidden;
-    }
-
-    /* 当前天气 */
-    .current-weather {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      flex-shrink: 0;
-      transition: all 0.2s ease;
-      cursor: default;
-    }
-
-    .current-weather:hover .weather-icon-lg {
-      transform: scale(1.1);
-    }
-
-    .weather-icon-lg { 
-      font-size: 32px; 
-      line-height: 1; 
-      transition: transform 0.3s ease;
-    }
-    .weather-temp-main { display: flex; align-items: baseline; gap: 2px; }
-    .temp-num { font-size: 28px; font-weight: 700; line-height: 1; }
-    .temp-unit { font-size: 14px; color: var(--text-secondary); }
-    .weather-desc { font-size: 12px; color: var(--text-secondary); }
-
-    /* 降水信息 - 带交互 */
-    .precip-info {
-      flex-shrink: 0;
-      font-size: 12px;
-      color: var(--text-secondary);
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      padding: 4px 10px;
-      background: var(--bg-secondary);
-      border-radius: var(--radius-sm);
-      transition: all 0.2s ease;
-      cursor: pointer;
-    }
-
-    .precip-info:hover {
-      background: var(--primary);
-      color: white;
-    }
-
-    .precip-icon { font-size: 14px; }
-
-    /* 7天预报 - 紧凑横排带交互 */
-    .weekly-compact {
-      flex: 1;
-      display: flex;
-      gap: 12px;
-      overflow: hidden;
-    }
-
-    .week-compact-item {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      font-size: 12px;
-      white-space: nowrap;
-      flex-shrink: 0;
-      padding: 4px 8px;
-      border-radius: 6px;
-      transition: all 0.2s ease;
-      cursor: pointer;
-    }
-
-    .week-compact-item:hover {
-      background: var(--bg-secondary);
-      transform: translateY(-2px);
-    }
-
-    .week-compact-day { color: var(--text-secondary); }
-    .week-compact-icon { font-size: 14px; }
-    .week-compact-temp { color: var(--text-primary); font-weight: 500; }
-
-    /* 建议 - 单行合并 */
-    /* 上课建议 - 带tooltip */
-    .advice-compact {
-      flex-shrink: 0;
-      font-size: 12px;
-      color: var(--text-secondary);
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      padding: 6px 12px;
-      background: var(--bg-secondary);
-      border-radius: var(--radius-sm);
-      max-width: 200px;
-      cursor: pointer;
-      position: relative;
-      transition: all 0.2s ease;
-    }
-
-    .advice-compact:hover {
-      background: var(--primary);
-      color: white;
-    }
-
-    .advice-compact:hover .advice-tooltip {
-      opacity: 1;
-      visibility: visible;
-      transform: translateY(0);
-    }
-
-    .advice-icon { font-size: 14px; }
-
-    .advice-text {
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      max-width: 140px;
-    }
-
-    .advice-tooltip {
-      position: absolute;
-      bottom: calc(100% + 8px);
-      left: 50%;
-      transform: translateX(-50%) translateY(5px);
-      background: var(--text-primary);
-      color: var(--bg-card);
-      padding: 8px 12px;
-      border-radius: 8px;
-      font-size: 12px;
-      white-space: nowrap;
+      justify-content: center;
       opacity: 0;
       visibility: hidden;
+      transition: all 0.3s ease;
+      padding: 20px;
+    }
+
+    .modal-overlay.show {
+      opacity: 1;
+      visibility: visible;
+    }
+
+    .modal-box {
+      background: var(--bg-card);
+      border-radius: 20px;
+      padding: 32px;
+      max-width: 380px;
+      width: 100%;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      transform: scale(0.9) translateY(20px);
+      transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+      text-align: center;
+    }
+
+    .modal-overlay.show .modal-box {
+      transform: scale(1) translateY(0);
+    }
+
+    .modal-course-name {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-bottom: 16px;
+      line-height: 1.3;
+    }
+
+    .modal-info-row {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 8px 0;
+      font-size: 14px;
+      color: var(--text-secondary);
+    }
+
+    .modal-info-label {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-hint);
+      min-width: 60px;
+      text-align: right;
+    }
+
+    .modal-info-value {
+      font-weight: 600;
+      color: var(--text-primary);
+      text-align: left;
+    }
+
+    .modal-close-btn {
+      margin-top: 24px;
+      padding: 10px 36px;
+      border: none;
+      border-radius: 12px;
+      background: linear-gradient(135deg, var(--primary), var(--accent));
+      color: white;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
       transition: all 0.2s ease;
-      z-index: 100;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-      line-height: 1.5;
     }
 
-    .advice-tooltip::after {
-      content: '';
-      position: absolute;
-      top: 100%;
-      left: 50%;
-      transform: translateX(-50%);
-      border: 6px solid transparent;
-      border-top-color: var(--text-primary);
+    .modal-close-btn:hover {
+      transform: scale(1.05);
+      box-shadow: 0 4px 16px rgba(0,122,255,0.35);
     }
 
-    /* 空状态 */
+    .modal-close-btn:active {
+      transform: scale(0.97);
+    }
+
+    /* ===== 空状态 ===== */
     .module-empty {
       display: flex;
       flex-direction: column;
@@ -1224,7 +1601,28 @@ class WebService {
     .empty-icon { font-size: 28px; }
     .empty-text { font-size: 12px; color: var(--text-hint); }
 
-    /* 平板适配 - iPad / Android Pad */
+    /* ===== 快捷键提示 ===== */
+    .shortcut-hint {
+      text-align: center;
+      font-size: 11px;
+      color: var(--text-hint);
+      padding: 8px 0 4px;
+      letter-spacing: 0.3px;
+    }
+
+    .shortcut-hint kbd {
+      display: inline-block;
+      padding: 1px 6px;
+      background: var(--bg-secondary);
+      border-radius: 4px;
+      font-family: inherit;
+      font-size: 10px;
+      font-weight: 600;
+      border: 1px solid var(--border);
+      margin: 0 2px;
+    }
+
+    /* ===== 平板适配 ===== */
     @media (min-width: 768px) and (max-width: 1024px) {
       .top-row {
         grid-template-columns: 240px 1fr;
@@ -1240,7 +1638,7 @@ class WebService {
       }
     }
 
-    /* 响应式 - 手机 */
+    /* ===== 响应式 - 手机 ===== */
     @media (max-width: 767px) {
       .main-container {
         padding: 56px 12px 16px;
@@ -1303,35 +1701,12 @@ class WebService {
         gap: 12px;
       }
 
-      /* 小分辨率课程间距优化 */
       .today-card .card-body {
         gap: 12px;
       }
 
       .today-item {
         padding: 12px 14px;
-      }
-
-      .weather-card .card-body {
-        flex-wrap: wrap;
-        justify-content: center;
-        gap: 12px;
-      }
-
-      /* 天气卡片小屏处理 */
-      .weather-card .card-body {
-        flex-wrap: wrap;
-        gap: 12px;
-      }
-
-      .weekly-compact {
-        order: 10;
-        width: 100%;
-        justify-content: space-around;
-      }
-
-      .advice-compact {
-        max-width: 100%;
       }
 
       .schedule-grid {
@@ -1352,20 +1727,31 @@ class WebService {
         font-size: 9px;
       }
 
-      /* 古诗词在小屏隐藏 */
       .schedule-quote {
+        font-size: 12px;
+        max-width: 160px;
+      }
+
+      .stats-bar {
+        font-size: 11px;
+        justify-content: center;
+      }
+
+      /* 手机端隐藏 tooltip */
+      .grid-cell.course:hover::after,
+      .grid-cell.course:hover::before {
         display: none;
       }
     }
 
-    /* 大屏优化 */
+    /* ===== 大屏优化 ===== */
     @media (min-width: 1200px) {
       .top-row {
         grid-template-columns: 320px 1fr;
       }
     }
 
-    /* 动画 */
+    /* ===== 动画 ===== */
     @keyframes fadeIn {
       from { opacity: 0; transform: translateY(8px); }
       to { opacity: 1; transform: translateY(0); }
@@ -1390,7 +1776,7 @@ class WebService {
     .card:nth-child(1) { animation-delay: 0.1s; }
     .card:nth-child(2) { animation-delay: 0.2s; }
     .topbar { animation: fadeIn 0.3s ease; }
-    
+
     /* 课表格子入场动画 */
     .schedule-col:nth-child(1) { animation: fadeInLeft 0.4s ease 0.1s both; }
     .schedule-col:nth-child(2) { animation: fadeInLeft 0.4s ease 0.15s both; }
@@ -1406,7 +1792,7 @@ class WebService {
     .today-item:nth-child(2) { animation-delay: 0.15s; }
     .today-item:nth-child(3) { animation-delay: 0.2s; }
     .today-item:nth-child(4) { animation-delay: 0.25s; }
-    
+
     /* 待办事项入场动画 */
     .todo-item { animation: fadeIn 0.3s ease both; }
     .todo-item:nth-child(1) { animation-delay: 0.1s; }
@@ -1427,22 +1813,16 @@ class WebService {
         </div>
       </div>
       <div class="topbar-center">
-        <span class="topbar-status">$statusIcon ${currentStatus}${nextCourseName.isNotEmpty ? ' $nextCourseName' : ''}</span>
+        <div class="stats-bar">
+          📚 本周 <span class="stat-num">$totalWeeklyCourses</span> 节 ·
+          今日 <span class="stat-num">${todayCourses.length}</span> 节 ·
+          已上 <span class="stat-num">$completedTotal</span> 节
+        </div>
+        <div class="topbar-status">$statusIcon ${currentStatus}${nextCourseName.isNotEmpty ? ' $nextCourseName' : ''}</div>
       </div>
       <div class="topbar-right">
-        <span class="topbar-time" id="liveTime">--:--:--</span>
+        <span class="topbar-time" id="liveTime">--:<span class="time-colon">:</span>--</span>
         <button class="theme-toggle" id="themeBtn" onclick="toggleTheme()" ontouchend="toggleTheme();event.preventDefault();" title="切换主题">🌓</button>
-      </div>
-    </div>
-
-    <!-- 上课天气预报 - 姓名头像下方 -->
-    <div class="card weather-card">
-      <div class="card-header">
-        <div class="card-icon">🌤️</div>
-        <span class="card-title">上课天气预报</span>
-      </div>
-      <div class="card-body">
-        $weatherHtml
       </div>
     </div>
 
@@ -1476,23 +1856,57 @@ class WebService {
       <!-- 本周课表 -->
       <div class="card schedule-card">
         <div class="card-header">
-          <div class="card-icon">📅</div>
-          <span class="card-title">本周课程表</span>
-          <span class="schedule-quote" id="quoteText">📜 读万卷书，行万里路</span>
+          <span class="card-title">📅 本周课程表 <span class="week-badge ${isSemesterOver ? 'week-over' : ''}">${isSemesterOver ? '已结束' : '第$weekNumber/$totalWeeks 周'}</span></span>
+          <span class="schedule-quote" id="quoteText" onclick="fetchPoem()" ontouchend="fetchPoem();event.preventDefault();" title="点击刷新诗词"><span class="quote-content">📜 正在寻找今日诗词...<span class="quote-refresh-icon">🔄</span></span></span>
         </div>
         <div class="schedule-grid">
           $scheduleGridHtml
         </div>
+        ${isSemesterOver ? '''
+        <div class="semester-over-overlay">
+          <div class="semester-over-content">
+            <span class="semester-over-icon">🎓</span>
+            <span class="semester-over-text">本学期已结束</span>
+            <span class="semester-over-sub">课程提醒已暂停，请到 APP 设置新学期</span>
+          </div>
+        </div>
+        ''' : ''}
       </div>
+    </div>
+
+  </div>
+
+  <!-- 课程详情模态框 -->
+  <div class="modal-overlay" id="courseModal" onclick="closeModal(event)">
+    <div class="modal-box" onclick="event.stopPropagation()">
+      <div class="modal-course-name" id="modalCourseName">课程名称</div>
+      <div class="modal-info-row">
+        <span class="modal-info-label">🕐 时间</span>
+        <span class="modal-info-value" id="modalTime">--</span>
+      </div>
+      <div class="modal-info-row">
+        <span class="modal-info-label">📍 地点</span>
+        <span class="modal-info-value" id="modalRoom">--</span>
+      </div>
+      <div class="modal-info-row">
+        <span class="modal-info-label">📝 备注</span>
+        <span class="modal-info-value" id="modalNote">--</span>
+      </div>
+      <div class="modal-info-row">
+        <span class="modal-info-label">📅 节次</span>
+        <span class="modal-info-value" id="modalPeriod">--</span>
+      </div>
+      <button class="modal-close-btn" onclick="closeModal()">知道了</button>
     </div>
   </div>
 
   <script>
-    // 添加点击涟漪效果
+    // ========================================
+    // 1. 涟漪点击效果
+    // ========================================
     document.addEventListener('DOMContentLoaded', () => {
-      // 添加涟漪样式
       const style = document.createElement('style');
-      style.textContent = `
+      style.textContent = \`
         .ripple {
           position: absolute;
           border-radius: 50%;
@@ -1507,11 +1921,10 @@ class WebService {
             opacity: 0;
           }
         }
-      `;
+      \`;
       document.head.appendChild(style);
 
-      // 为可点击元素添加涟漪
-      document.querySelectorAll('.card, .today-item, .todo-item, .grid-cell, .advice-compact, .precip-info, .week-compact-item').forEach(el => {
+      document.querySelectorAll('.card, .today-item, .todo-item, .grid-cell').forEach(el => {
         el.style.position = 'relative';
         el.style.overflow = 'hidden';
         el.addEventListener('click', function(e) {
@@ -1526,56 +1939,77 @@ class WebService {
           setTimeout(() => ripple.remove(), 600);
         });
       });
+
+      // 初始加载诗词
+      fetchPoem();
+
+      // 每5分钟自动刷新一首新诗
+      setInterval(fetchPoem, 300000);
     });
 
-    // 励志古诗词库
-    const quotes = [
-      "📜 读万卷书，行万里路",
-      "📜 书山有路勤为径，学海无涯苦作舟",
-      "📜 春蚕到死丝方尽，蜡炬成灰泪始干",
-      "📜 落红不是无情物，化作春泥更护花",
-      "📜 随风潜入夜，润物细无声",
-      "📜 采得百花成蜜后，为谁辛苦为谁甜",
-      "📜 人生自古谁无死，留取丹心照汗青",
-      "📜 先天下之忧而忧，后天下之乐而乐",
-      "📜 业精于勤，荒于嬉；行成于思，毁于随",
-      "📜 纸上得来终觉浅，绝知此事要躬行",
-      "📜 问渠那得清如许？为有源头活水来",
-      "📜 旧书不厌百回读，熟读深思子自知",
-      "📜 千淘万漉虽辛苦，吹尽狂沙始到金",
-      "📜 长风破浪会有时，直挂云帆济沧海",
-      "📜 会当凌绝顶，一览众山小"
-    ];
+    // ========================================
+    // 2. 今日诗词 API
+    // ========================================
+    function fetchPoem() {
+      const el = document.getElementById('quoteText');
+      if (!el) return;
 
-    let currentQuoteIndex = 0;
+      el.classList.add('fetching');
 
-    function updateQuote() {
-      const quoteEl = document.getElementById('quoteText');
-      if (quoteEl) {
-        quoteEl.style.opacity = '0';
-        setTimeout(() => {
-          currentQuoteIndex = (currentQuoteIndex + 1) % quotes.length;
-          quoteEl.textContent = quotes[currentQuoteIndex];
-          quoteEl.style.opacity = '1';
-        }, 300);
-      }
+      fetch('https://v1.jinrishici.com/one.json')
+        .then(res => res.json())
+        .then(data => {
+          if (data.content && data.origin && data.author) {
+            const text = '📜 ' + data.content + ' ——' + data.author + '《' + data.origin + '》';
+            // 设置到 .quote-content 内部，保留 marquee 滚动容器
+            let contentEl = el.querySelector('.quote-content');
+            if (!contentEl) {
+              contentEl = document.createElement('span');
+              contentEl.className = 'quote-content';
+              el.appendChild(contentEl);
+            }
+            contentEl.textContent = text;
+          } else {
+            showFallbackPoem(el);
+          }
+          el.classList.remove('loading', 'fetching');
+        })
+        .catch(() => {
+          showFallbackPoem(el);
+          el.classList.remove('fetching');
+        });
     }
 
-    // 每3分钟切换一次
-    setInterval(updateQuote, 180000);
+    function showFallbackPoem(el) {
+      let contentEl = el.querySelector('.quote-content');
+      if (!contentEl) {
+        contentEl = document.createElement('span');
+        contentEl.className = 'quote-content';
+        el.appendChild(contentEl);
+      }
+      contentEl.textContent = '📜 春蚕到死丝方尽，蜡炬成灰泪始干 ——李商隐《无题》';
+      el.classList.remove('loading', 'fetching');
+    }
 
-    // 实时时钟
+    // ========================================
+    // 3. 实时时钟（带冒号闪烁）
+    // ========================================
     function updateTime() {
       const now = new Date();
       const hours = String(now.getHours()).padStart(2, '0');
       const minutes = String(now.getMinutes()).padStart(2, '0');
       const seconds = String(now.getSeconds()).padStart(2, '0');
-      document.getElementById('liveTime').textContent = hours + ':' + minutes + ':' + seconds;
+      const timeEl = document.getElementById('liveTime');
+      if (timeEl) {
+        timeEl.innerHTML = hours + ':<span class="time-colon">:</span>' + minutes;
+      }
     }
     updateTime();
     setInterval(updateTime, 1000);
 
-    // 深浅模式切换
+    // ========================================
+    // 4. 深浅模式切换
+    // ========================================
     function toggleTheme() {
       const html = document.documentElement;
       const currentTheme = html.getAttribute('data-theme');
@@ -1593,10 +2027,84 @@ class WebService {
     if (savedTheme === 'dark') {
       document.documentElement.setAttribute('data-theme', 'dark');
     }
+
+    // ========================================
+    // 5. 课程格子弹出详情模态框
+    // ========================================
+    document.querySelectorAll('.grid-cell.course').forEach(cell => {
+      cell.addEventListener('click', function(e) {
+        e.stopPropagation();
+        const name = this.dataset.courseName || '未知课程';
+        const time = this.dataset.courseTime || '--';
+        const room = this.dataset.courseRoom || '未指定';
+        const note = this.dataset.courseNote || '暂无备注';
+        const period = (this.dataset.coursePeriod || '') + ' ' + (this.dataset.courseWeekday || '');
+
+        document.getElementById('modalCourseName').textContent = name;
+        document.getElementById('modalTime').textContent = time;
+        document.getElementById('modalRoom').textContent = room;
+        document.getElementById('modalNote').textContent = note;
+        document.getElementById('modalPeriod').textContent = period.trim();
+
+        openModal();
+      });
+    });
+
+    function openModal() {
+      document.getElementById('courseModal').classList.add('show');
+    }
+
+    function closeModal(e) {
+      if (e && e.target !== e.currentTarget) return;
+      document.getElementById('courseModal').classList.remove('show');
+    }
+
+    // ========================================
+    // 6. 今日课程项点击展开/收起详情
+    // ========================================
+    document.querySelectorAll('.today-item').forEach(item => {
+      item.addEventListener('click', function(e) {
+        this.classList.toggle('expanded');
+      });
+    });
+
+    // ========================================
+    // 7. 待办事项点击划线效果
+    // ========================================
+    document.querySelectorAll('.todo-item:not(.done)').forEach(item => {
+      item.addEventListener('click', function(e) {
+        e.stopPropagation();
+        this.classList.toggle('done');
+        const checkEl = this.querySelector('.todo-check');
+        if (checkEl) checkEl.classList.toggle('checked');
+      });
+    });
+
+    // ========================================
+    // 8. 键盘快捷键（仅 T 切换主题，其余用触摸操作）
+    // ========================================
+    document.addEventListener('keydown', function(e) {
+      // 忽略输入框中的按键
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+      if (e.key.toLowerCase() === 't') {
+        toggleTheme();
+      }
+    });
   </script>
 </body>
 </html>
 ''';
+  }
+
+  /// HTML 属性转义，防 XSS
+  String _escapeAttr(String value) {
+    return value
+        .replaceAll('&', '&amp;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;');
   }
 
   /// 计算课程进度
@@ -1667,7 +2175,6 @@ class WebService {
 
   /// 获取对比色（白或黑）
   String _getContrastColor(dynamic color) {
-    // Flutter Color 对象的计算方式
     final r = (color.value >> 16) & 0xFF;
     final g = (color.value >> 8) & 0xFF;
     final b = color.value & 0xFF;

@@ -29,6 +29,10 @@
     <!-- 日历写入权限 -->
     <uses-permission android:name="android.permission.WRITE_CALENDAR"/>
     <uses-permission android:name="android.permission.READ_CALENDAR"/>
+    <!-- 位置权限 - 自动定位 -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION"/>
 
     <!-- 日历 Intent 查询支持（Android 11+） -->
     <queries>
@@ -100,6 +104,19 @@
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/widget_config_large"/>
+        </receiver>
+
+        <!-- 待办事项 4×2 -->
+        <receiver
+            android:name=".TodoWidget"
+            android:exported="true"
+            android:label="待办事项">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_config_todo"/>
         </receiver>
 
         <!-- 超级岛服务 - 悬浮窗实现 -->

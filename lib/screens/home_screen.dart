@@ -7,14 +7,17 @@ import 'todo_screen.dart';
 import 'settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  final int initialIndex;
+  final ValueNotifier<int>? routeNotifier;  // 外部路由通知
+
+  const HomeScreen({super.key, this.initialIndex = 0, this.routeNotifier});
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  State<HomeScreen> createState() => HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
-  int _currentIndex = 0;
+class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
+  late int _currentIndex;
   late PageController _pageController;
 
   List<Widget> get _screens => [
@@ -27,14 +30,33 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    _currentIndex = widget.initialIndex;
     WidgetService.updateWidget();
-    _pageController = PageController();
+    _pageController = PageController(initialPage: _currentIndex);
+
+    // 监听外部路由通知
+    widget.routeNotifier?.addListener(_onRouteChanged);
   }
 
   @override
   void dispose() {
+    widget.routeNotifier?.removeListener(_onRouteChanged);
     _pageController.dispose();
     super.dispose();
+  }
+
+  /// 收到外部路由通知，切换到对应 Tab
+  void _onRouteChanged() {
+    final newIndex = widget.routeNotifier?.value ?? 0;
+    if (newIndex != _currentIndex && newIndex >= 0 && newIndex < _screens.length) {
+      _pageController.animateToPage(
+        newIndex,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+      );
+      setState(() { _currentIndex = newIndex; });
+      print('[HomeScreen] 路由切换到 Tab $newIndex');
+    }
   }
 
   @override

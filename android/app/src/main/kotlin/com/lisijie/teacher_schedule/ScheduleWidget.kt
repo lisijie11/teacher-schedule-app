@@ -115,6 +115,7 @@ object WidgetSupport {
             ScheduleWidget::class.java,
             ScheduleWidgetMedium::class.java,
             ScheduleWidgetLarge::class.java,
+            TodoWidget::class.java,
         )
         for (cls in pairs) {
             val ids = mgr.getAppWidgetIds(ComponentName(context, cls))
@@ -123,13 +124,16 @@ object WidgetSupport {
                     ScheduleWidget::class.java -> ScheduleWidget.updateWidget(context, mgr, id)
                     ScheduleWidgetMedium::class.java -> ScheduleWidgetMedium.updateWidget(context, mgr, id)
                     ScheduleWidgetLarge::class.java -> ScheduleWidgetLarge.updateWidget(context, mgr, id)
+                    TodoWidget::class.java -> TodoWidget.updateWidget(context, mgr, id)
                 }
             }
         }
     }
 
-    fun buildLaunchPendingIntent(context: Context, requestCode: Int): PendingIntent {
-        val intent = Intent(context, MainActivity::class.java)
+    fun buildLaunchPendingIntent(context: Context, requestCode: Int, route: String = ""): PendingIntent {
+        val intent = Intent(context, MainActivity::class.java).apply {
+            putExtra("route", route)
+        }
         return PendingIntent.getActivity(
             context, requestCode, intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
@@ -422,7 +426,7 @@ class ScheduleWidget : AppWidgetProvider() {
             // ── 点击事件 ──
             views.setOnClickPendingIntent(
                 R.id.widget_small_root,
-                WidgetSupport.buildLaunchPendingIntent(context, 10000 + appWidgetId)
+                WidgetSupport.buildLaunchPendingIntent(context, 10000 + appWidgetId, "/today")
             )
 
             mgr.updateAppWidget(appWidgetId, views)
@@ -553,7 +557,7 @@ class ScheduleWidgetMedium : AppWidgetProvider() {
             // ── 点击事件 ──
             views.setOnClickPendingIntent(
                 R.id.widget_medium_root,
-                WidgetSupport.buildLaunchPendingIntent(context, 20000 + appWidgetId)
+                WidgetSupport.buildLaunchPendingIntent(context, 20000 + appWidgetId, "/schedule")
             )
 
             mgr.updateAppWidget(appWidgetId, views)
@@ -617,7 +621,7 @@ class ScheduleWidgetLarge : AppWidgetProvider() {
             // 点击事件
             views.setOnClickPendingIntent(
                 R.id.widget_large_root,
-                WidgetSupport.buildLaunchPendingIntent(context, 30000 + appWidgetId)
+                WidgetSupport.buildLaunchPendingIntent(context, 30000 + appWidgetId, "/schedule")
             )
 
             mgr.updateAppWidget(appWidgetId, views)

@@ -7,6 +7,7 @@
     <string name="widget_desc_medium">课表(中)</string>
     <string name="widget_desc_large">课表(大)</string>
     <string name="widget_desc_square">课表</string>
+    <string name="widget_desc_todo">待办事项</string>
 
     <!-- 小部件默认文本 -->
     <string name="widget_default_date">点击查看课表</string>

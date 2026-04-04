@@ -7,7 +7,17 @@ import '../models/schedule_model.dart';
 import 'package:intl/intl.dart';
 
 /// 日历服务 - 一键将未来一周课程添加到系统日历
-/// 使用 device_calendar 直接批量写入，无需逐个弹窗
+///
+/// **设计思路（手机日程逻辑）**：
+/// 手机日历的核心价值是「提醒」和「占位」，而非精确的时间块。
+/// 如果依赖 SchedulePresets 作息时间写入 start/end，一旦用户 Hive 中
+/// 残留旧版脏数据，就会出现"晚上上课"的荒谬时间。
+///
+/// 因此采用**全天事件 + 描述中写明具体时间**的模式：
+/// - 事件设为 allDay=true → 日历中显示为当天待办，不会出现在错误时间段
+/// - 具体时间写在 description 里 + 备注/提醒中
+/// - 仍然保留提前15分钟的系统提醒（allDay 事件也支持 reminder）
+/// - 用户打开事件详情能看到完整信息：第几节课、几点到几点、哪里上课
 class CalendarService {
   CalendarService._();
 
@@ -64,11 +74,19 @@ class CalendarService {
     return showModalBottomSheet<Calendar>(
       context: context,
       backgroundColor: Colors.transparent,
+      useSafeArea: true, // 确保安全区生效
+      isScrollControlled: true, // 允许控制高度
       builder: (context) => _CalendarPickerSheet(calendars: calendars),
     );
   }
 
   /// 添加未来一周所有课程到指定日历
+  ///
+  /// **按天合并**：同一天的所有课程合并为 **1 个全天事件**
+  /// - 标题：「📚 周X 课程 (N节)」
+  /// - 描述中按时间顺序列出每节课：第几节、课程名、时间、地点
+  /// - allDay = true → 不依赖作息时间的正确性
+  /// - reminder 提前15分钟（提醒当天第一节课）
   Future<CalendarAddResult> addNextWeekCoursesTo(
     String calendarId,
     List<CourseEntry> courses,
@@ -78,96 +96,87 @@ class CalendarService {
     }
 
     _ensureTzInitialized();
+    await SchedulePresets.init();
 
     final now = DateTime.now();
-    // 从今天开始，往后7天
     final weekDates = List.generate(
       7,
       (i) => DateTime(now.year, now.month, now.day).add(Duration(days: i)),
     );
 
     int added = 0;
-    int total = 0;
+    int totalCourses = 0;
     final List<String> errors = [];
 
     for (final date in weekDates) {
-      final weekday = date.weekday; // 1=周一，7=周日
+      final weekday = date.weekday;
       final periods = SchedulePresets.getPeriodsForWeekday(weekday);
+      final weekdayStr = getWeekdayName(weekday);
+      final dateStr = DateFormat('M月d日').format(date);
 
+      // 收集当天有课的节次（已按 periods 顺序排列）
+      final dayCourses = <_DayCourseEntry>[];
       for (final period in periods) {
-        // 找到该天该节次的课程
-        final matchedCourses = courses.where(
-          (c) => c.weekday == weekday && c.periodIndex == period.index,
+        final matched = courses.where(
+          (c) => c.weekday == weekday && c.periodIndex == period.index && c.courseName.isNotEmpty,
         ).toList();
-
-        for (final c in matchedCourses) {
-          if (c.courseName.isEmpty) continue;
-          total++;
-
-          // 构造事件
-          final startTz = tz.TZDateTime(
-            tz.local,
-            date.year,
-            date.month,
-            date.day,
-            period.startHour,
-            period.startMinute,
-          );
-          final endTz = tz.TZDateTime(
-            tz.local,
-            date.year,
-            date.month,
-            date.day,
-            period.endHour,
-            period.endMinute,
-          );
-
-          // 课程标题
-          String title = c.courseName;
-          if (c.note != null && c.note!.isNotEmpty) {
-            title += ' (${c.note})';
-          }
-
-          // 课程描述
-          final dateStr = DateFormat('M月d日').format(date);
-          final weekdayStr = SchedulePresets.getModeShortLabel(weekday);
-          final desc = '$weekdayStr $dateStr ${period.name}';
-          final notes = [
-            desc,
-            if (c.note != null && c.note!.isNotEmpty) '班级：${c.note}',
-            '上课时间：${period.startTime} - ${period.endTime}',
-            if (c.classroom.isNotEmpty) '上课地点：${c.classroom}',
-            '——由教师课表助手自动添加',
-          ].join('\n');
-
-          final event = Event(
-            calendarId,
-            title: title,
-            description: notes,
-            location: c.classroom.isNotEmpty ? c.classroom : null,
-            start: startTz,
-            end: endTz,
-            allDay: false,
-            reminders: [Reminder(minutes: 15)], // 默认提前15分钟提醒
-          );
-
-          try {
-            final result = await _deviceCalendarPlugin.createOrUpdateEvent(event);
-            if (result?.isSuccess == true) {
-              added++;
-            } else {
-              errors.add('${c.courseName}: ${result?.errors?.join(", ") ?? "未知错误"}');
-            }
-          } catch (e) {
-            errors.add('${c.courseName}: $e');
-          }
+        for (final c in matched) {
+          dayCourses.add(_DayCourseEntry(period: period, course: c));
+          totalCourses++;
         }
+      }
+
+      if (dayCourses.isEmpty) continue; // 当天没课，跳过
+
+      // ===== 当天只创建 1 个全天事件 =====
+      final nextDay = date.add(const Duration(days: 1));
+      final eventStart = tz.TZDateTime(tz.local, date.year, date.month, date.day);
+      final eventEnd = tz.TZDateTime(tz.local, nextDay.year, nextDay.month, nextDay.day);
+
+      // 标题：周X 课程
+      final courseNames = dayCourses.map((dc) => dc.course.courseName).join('、');
+      final title = '$weekdayStr: $courseNames';
+
+      // 描述：简洁的时间列表
+      final descLines = <String>[];
+      for (final dc in dayCourses) {
+        final p = dc.period;
+        final c = dc.course;
+        descLines.add('${c.courseName}  ${p.startTime}-${p.endTime}');
+      }
+      final description = descLines.join('\n');
+
+      // 取第一节课的地点作为事件地点（日历卡片上显示）
+      final location = dayCourses.first.course.classroom.isNotEmpty
+          ? dayCourses.first.course.classroom
+          : null;
+
+      final event = Event(
+        calendarId,
+        title: title,
+        description: description,
+        location: location,
+        start: eventStart,
+        end: eventEnd,
+        allDay: true,
+        reminders: [Reminder(minutes: 15)],
+      );
+
+      try {
+        final result = await _deviceCalendarPlugin.createOrUpdateEvent(event);
+        if (result?.isSuccess == true) {
+          added++;
+        } else {
+          errors.add('$weekdayStr: ${result?.errors?.join(", ") ?? "未知错误"}');
+        }
+      } catch (e) {
+        errors.add('$weekdayStr: $e');
       }
     }
 
     return CalendarAddResult(
       added: added,
-      total: total,
+      total: totalCourses,
       errors: errors,
     );
   }
@@ -208,63 +217,59 @@ class _CalendarPickerSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
 
     return Container(
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // 顶部拖动条
-          Container(
-            margin: const EdgeInsets.only(top: 12),
-            width: 36,
-            height: 4,
-            decoration: BoxDecoration(
-              color: Colors.grey.shade400,
-              borderRadius: BorderRadius.circular(2),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // 顶部拖动条
+            Container(
+              margin: const EdgeInsets.only(top: 12),
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey.shade400,
+                borderRadius: BorderRadius.circular(2),
+              ),
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(20),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.calendar_month_rounded,
-                  color: theme.colorScheme.primary,
-                  size: 24,
-                ),
-                const SizedBox(width: 10),
-                Text(
-                  '选择日历',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                    color: isDark ? Colors.white : Colors.black87,
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.calendar_month_rounded,
+                    color: theme.colorScheme.primary,
+                    size: 24,
                   ),
-                ),
-                const Spacer(),
-                Text(
-                  '${calendars.length} 个日历',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                  const SizedBox(width: 10),
+                  Text(
+                    '选择日历',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      color: isDark ? Colors.white : Colors.black87,
+                    ),
                   ),
-                ),
-              ],
+                  const Spacer(),
+                  Text(
+                    '${calendars.length} 个日历',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-          Divider(height: 1, color: isDark ? Colors.grey.shade800 : Colors.grey.shade200),
-          // 日历列表
-          ListView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            itemCount: calendars.length,
-            itemBuilder: (context, index) {
-              final cal = calendars[index];
+            Divider(height: 1, color: isDark ? Colors.grey.shade800 : Colors.grey.shade200),
+            // 日历列表
+            ...calendars.map((cal) {
               final isDefault = cal.isDefault == true;
               return ListTile(
                 leading: Container(
@@ -312,14 +317,21 @@ class _CalendarPickerSheet extends StatelessWidget {
                     : const Icon(Icons.chevron_right, size: 20),
                 onTap: () => Navigator.pop(context, cal),
               );
-            },
-          ),
-          // 底部安全区
-          SizedBox(height: MediaQuery.of(context).padding.bottom),
-        ],
+            }),
+            // 底部安全区
+            SizedBox(height: bottomPadding + 16),
+          ],
+        ),
       ),
     );
   }
+}
+
+/// 当天课程条目（节次 + 课程信息的组合）
+class _DayCourseEntry {
+  final ClassPeriod period;
+  final CourseEntry course;
+  _DayCourseEntry({required this.period, required this.course});
 }
 
 /// 日历添加结果
@@ -337,8 +349,9 @@ class CalendarAddResult {
   bool get hasErrors => errors.isNotEmpty;
   String get message {
     if (total == 0) return '没有找到可添加的课程';
-    if (added == total) return '已成功添加 $added 节课程到日历 ✅';
+    if (added == total && added <= 7) return '已成功将 $added 天课程写入日历 ✅';
+    if (added == total) return '已成功将 $added 天（共 $total 节课）写入日历 ✅';
     if (added == 0) return '添加失败，请检查日历权限';
-    return '已添加 $added/$total 节课程到日历';
+    return '已添加 $added 天课程到日历';
   }
 }

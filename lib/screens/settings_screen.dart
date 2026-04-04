@@ -17,6 +17,7 @@ import '../services/keep_alive_service.dart';
 import '../services/hyper_island_service.dart';
 import '../services/web_service.dart';
 import '../services/weather_service.dart';
+import '../services/location_service.dart';
 import 'schedule_edit_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -33,6 +34,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late String _userName;
   late String _userLocation;
   late String _userAvatarPath;
+  late DateTime _semesterStartDate; // 学期起始日
+  late int _totalWeeks; // 学期总周数（默认20周）
   bool _isKeepAliveRunning = false;
   bool _isAccessibilityEnabled = false;
 
@@ -72,6 +75,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _userName = settings.get('userName', defaultValue: '');
     _userLocation = settings.get('userLocation', defaultValue: '待定');
     _userAvatarPath = settings.get('userAvatarPath', defaultValue: '');
+    // 学期起始日（默认本年9月1日）
+    final semesterStartStr = settings.get('semesterStartDate', defaultValue: '');
+    if (semesterStartStr.isNotEmpty) {
+      _semesterStartDate = DateTime.parse(semesterStartStr);
+    } else {
+      final now = DateTime.now();
+      _semesterStartDate = DateTime(now.month >= 9 ? now.year : now.year - 1, 9, 1);
+    }
+    // 学期总周数（默认20周）
+    _totalWeeks = settings.get('totalWeeks', defaultValue: 20);
   }
 
   Future<void> _saveSettings() async {
@@ -86,6 +99,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await settings.put('userName', _userName);
     await settings.put('userLocation', _userLocation);
     await settings.put('userAvatarPath', _userAvatarPath);
+    await settings.put('semesterStartDate', _semesterStartDate.toIso8601String().split('T')[0]);
+    await settings.put('totalWeeks', _totalWeeks);
 
     // 更新课表提醒
     scheduleProvider.setAdvanceMinutes(_reminderMinutes);
@@ -176,9 +191,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 icon: Icons.location_on_outlined,
                 title: '常用地点',
                 value: _userLocation,
-                onTap: () => _showTextInputDialog('常用地点', _userLocation, (value) {
-                  setState(() => _userLocation = value);
-                }),
+                onTap: () => _showLocationPicker(),
               ),
             ],
           ),
@@ -225,6 +238,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
               _buildScheduleEditTile(theme, '工作日作息', true),
               _buildDivider(isDark),
               _buildScheduleEditTile(theme, '周末作息', false),
+            ],
+          ),
+
+          const SizedBox(height: 24),
+
+          // ═══════════════════════════════════
+          // 学期设置
+          // ═══════════════════════════════════
+          _buildSectionTitle(theme, '学期设置'),
+          _buildCard(
+            theme,
+            children: [
+              _buildSemesterTile(theme),
+              _buildDivider(isDark),
+              _buildTotalWeeksTile(theme),
             ],
           ),
 
@@ -362,7 +390,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 theme: theme,
                 icon: Icons.info_outline_rounded,
                 title: '版本',
-                subtitle: '2.0.7',
+                subtitle: '2.3.0',
               ),
               _buildDivider(isDark),
               _buildInfoTile(
@@ -1583,6 +1611,362 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  /// 常用地点选择器（支持自动定位 + 快速选择 + 手动输入）
+  void _showLocationPicker() {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    // 收集课程中出现的所有地点
+    final courseProvider = context.read<CourseProvider>();
+    final allLocations = courseProvider.all
+        .map((c) => c.classroom)
+        .where((loc) => loc.isNotEmpty)
+        .toSet()
+        .toList()
+      ..sort();
+
+    // 预设热门城市
+    const presetCities = ['佛山', '广州', '深圳', '北京', '上海', '成都', '杭州', '武汉', '西安', '南京'];
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setStateSheet) {
+          String tempValue = _userLocation;
+          bool isLocating = false;
+          String? locatedCity;
+
+          return StatefulBuilder(
+            builder: (ctx, setInnerState) {
+              return Container(
+                margin: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF2A2A2A) : Colors.white,
+                  borderRadius: BorderRadius.circular(28),
+                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 20, offset: const Offset(0, 8))],
+                ),
+                child: SafeArea(
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(width: 36, height: 4, margin: const EdgeInsets.only(top: 12), decoration: BoxDecoration(color: Colors.grey.shade400, borderRadius: BorderRadius.circular(2))),
+                        const SizedBox(height: 16),
+                        Text('设置常用地点', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: isDark ? Colors.white : const Color(0xFF1A1A1A))),
+                        const SizedBox(height: 8),
+                        Text('用于天气查询，影响 Web 看板和小组件天气显示', style: TextStyle(fontSize: 13, color: Colors.grey)),
+                        const SizedBox(height: 16),
+
+                        // 自动定位按钮（重点功能）
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          child: InkWell(
+                            onTap: isLocating ? null : () async {
+                              setInnerState(() => isLocating = true);
+                              
+                              try {
+                                // 添加超时保护
+                                final city = await LocationService.instance.getCurrentCity()
+                                    .timeout(const Duration(seconds: 10), onTimeout: () => null);
+                                if (city != null && city.isNotEmpty) {
+                                  setInnerState(() {
+                                    locatedCity = city;
+                                    tempValue = city;
+                                    isLocating = false;
+                                  });
+                                  
+                                  // 显示成功提示
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Row(
+                                        children: [
+                                          const Icon(Icons.check_circle_rounded, color: Colors.white, size: 18),
+                                          const SizedBox(width: 8),
+                                          Text('定位成功: $city'),
+                                        ],
+                                      ),
+                                      backgroundColor: AppTheme.accentGreen,
+                                      duration: const Duration(seconds: 2),
+                                    ),
+                                  );
+                                } else {
+                                  setInnerState(() => isLocating = false);
+                                  _showLocationErrorDialog(ctx, '无法获取位置', '定位超时或无权限，请手动选择城市');
+                                }
+                              } catch (e) {
+                                setInnerState(() => isLocating = false);
+                                _showLocationErrorDialog(ctx, '定位失败', '请确保已开启位置权限和GPS定位服务');
+                              }
+                            },
+                            borderRadius: BorderRadius.circular(12),
+                            child: Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  colors: isLocating 
+                                    ? [Colors.grey, Colors.grey.shade600]
+                                    : [AppTheme.accentBlue, AppTheme.accentBlue.withOpacity(0.8)],
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                ),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  isLocating 
+                                    ? SizedBox(
+                                        width: 18,
+                                        height: 18,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                        ),
+                                      )
+                                    : const Icon(Icons.gps_fixed, color: Colors.white, size: 18),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    isLocating ? '正在定位...' : '自动定位当前位置',
+                                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 15),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+
+                        // 定位结果显示
+                        if (locatedCity != null) ...[
+                          const SizedBox(height: 12),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 20),
+                            child: Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: AppTheme.accentGreen.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: AppTheme.accentGreen.withOpacity(0.3)),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.location_on_rounded, color: AppTheme.accentGreen, size: 20),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      '已定位到: $locatedCity',
+                                      style: TextStyle(color: AppTheme.accentGreen, fontWeight: FontWeight.w500),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+
+                        const SizedBox(height: 16),
+
+                        // 分隔线 + 手动输入选项
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          child: Row(
+                            children: [
+                              Expanded(child: Divider(color: Colors.grey.shade300)),
+                              Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 12),
+                                child: Text('或者手动选择', style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+                              ),
+                              Expanded(child: Divider(color: Colors.grey.shade300)),
+                            ],
+                          ),
+                        ),
+
+                        const SizedBox(height: 16),
+
+                        // 手动输入按钮
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          child: InkWell(
+                            onTap: () {
+                              Navigator.pop(ctx);
+                              _showTextInputDialog('常用地点', _userLocation, (value) {
+                                setState(() => _userLocation = value);
+                              });
+                            },
+                            borderRadius: BorderRadius.circular(12),
+                            child: Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              decoration: BoxDecoration(
+                                border: Border.all(color: theme.colorScheme.outline),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.edit, size: 18, color: theme.textTheme.bodyMedium?.color),
+                                  const SizedBox(width: 6),
+                                  Text('手动输入城市名称', style: TextStyle(fontWeight: FontWeight.w600, color: theme.textTheme.bodyMedium?.color)),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+
+                        const SizedBox(height: 16),
+
+                        // 热门城市
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text('热门城市', style: TextStyle(fontSize: 12, color: Colors.grey.shade500, fontWeight: FontWeight.w600)),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          child: Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: presetCities.map((city) =>
+                              GestureDetector(
+                                onTap: () => setInnerState(() => tempValue = city),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                  decoration: BoxDecoration(
+                                    color: tempValue == city ? theme.colorScheme.primary : (isDark ? const Color(0xFF3A3A3A) : Colors.grey.shade100),
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                  child: Text(city, style: TextStyle(
+                                    fontSize: 13,
+                                    color: tempValue == city ? Colors.white : null,
+                                    fontWeight: tempValue == city ? FontWeight.w600 : null,
+                                  )),
+                                ),
+                              ),
+                            ).toList(),
+                          ),
+                        ),
+
+                        // 课程地点
+                        if (allLocations.isNotEmpty) ...[
+                          const SizedBox(height: 16),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 20),
+                            child: Align(
+                              alignment: Alignment.centerLeft,
+                              child: Text('课程中的地点 (${allLocations.length})', style: TextStyle(fontSize: 12, color: Colors.grey.shade500, fontWeight: FontWeight.w600)),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          SizedBox(
+                            height: 120,
+                            child: ListView.builder(
+                              shrinkWrap: true,
+                              itemCount: allLocations.length,
+                              itemBuilder: (_, index) {
+                                final loc = allLocations[index];
+                                return ListTile(
+                                  dense: true,
+                                  leading: Icon(tempValue == loc ? Icons.check_circle : Icons.place_outlined,
+                                    color: tempValue == loc ? theme.colorScheme.primary : Colors.grey, size: 20),
+                                  title: Text(loc, style: TextStyle(fontSize: 14, fontWeight: tempValue == loc ? FontWeight.w600 : null)),
+                                  onTap: () => setInnerState(() => tempValue = loc),
+                                );
+                              },
+                            ),
+                          ),
+                        ],
+
+                        const SizedBox(height: 16),
+
+                        // 确定按钮
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          child: SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton(
+                              onPressed: () {
+                                setState(() => _userLocation = tempValue);
+                                Navigator.pop(ctx);
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: theme.colorScheme.primary,
+                                foregroundColor: Colors.white,
+                                elevation: 0,
+                                padding: const EdgeInsets.symmetric(vertical: 16),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                              ),
+                              child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                                Icon(Icons.check, size: 20),
+                                SizedBox(width: 8),
+                                Text('确定', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                              ]),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+
+  /// 显示定位错误对话框
+  void _showLocationErrorDialog(BuildContext ctx, String title, String message) {
+    showDialog(
+      context: ctx,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Icon(Icons.error_outline, color: AppTheme.accentOrange, size: 24),
+            const SizedBox(width: 10),
+            Text(title),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(message),
+            const SizedBox(height: 16),
+            Text(
+              '可能的解决方案：',
+              style: TextStyle(fontWeight: FontWeight.w600, color: Colors.grey.shade600),
+            ),
+            const SizedBox(height: 8),
+            Text('• 检查是否开启了位置权限'),
+            Text('• 确保GPS定位服务已开启'),
+            Text('• 尝试在室外或窗边获取更好的信号'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('知道了'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              LocationService.instance.openAppSettings();
+            },
+            child: const Text('打开设置'),
+          ),
+        ],
+      ),
+    );
+  }
+
   /// 导入课表区域
   Widget _buildImportTile(ThemeData theme) {
     return Column(
@@ -2088,6 +2472,174 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   // ═══════════════════════════════════════════════
+  // 学期设置
+  // ═══════════════════════════════════════════════
+
+  /// 计算当前是第几周
+  int _calculateWeekNumber() {
+    final now = DateTime.now();
+    final daysSinceStart = now.difference(_semesterStartDate).inDays;
+    final startWeekday = _semesterStartDate.weekday; // 1=周一
+    final adjustedDays = daysSinceStart + (startWeekday - 1);
+    return (adjustedDays / 7).floor() + 1;
+  }
+
+  Widget _buildSemesterTile(ThemeData theme) {
+    final weekNum = _calculateWeekNumber();
+    final dateStr = '${_semesterStartDate.year}年${_semesterStartDate.month}月${_semesterStartDate.day}日';
+    final isOver = weekNum > _totalWeeks;
+
+    return InkWell(
+      onTap: () => _showSemesterDatePicker(),
+      borderRadius: BorderRadius.circular(16),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: isOver ? const Color(0xFFFFEBEE) : const Color(0xFFE8F5E9),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(Icons.event_rounded, color: isOver ? const Color(0xFFE53935) : const Color(0xFF4CAF50), size: 20),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('学期起始日', style: theme.textTheme.bodyLarge),
+                  const SizedBox(height: 2),
+                  Text(
+                    '$dateStr · 当前第 $weekNum 周${isOver ? "（已结束）" : ""}',
+                    style: theme.textTheme.bodySmall?.copyWith(color: isOver ? Colors.red[400] : Colors.grey[600]),
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: (isOver ? const Color(0xFFE53935) : const Color(0xFF4CAF50)).withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                '第$weekNum/${_totalWeeks}周',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: isOver ? const Color(0xFFE53935) : const Color(0xFF4CAF50),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Icon(Icons.chevron_right_rounded, color: Colors.grey[400], size: 20),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showSemesterDatePicker() async {
+    if (!mounted) return;
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _semesterStartDate,
+      firstDate: DateTime(2020, 1, 1),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+      locale: const Locale('zh', 'CN'),
+      helpText: '选择学期起始日期',
+      cancelText: '取消',
+      confirmText: '确定',
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: Theme.of(context).colorScheme.copyWith(
+              primary: const Color(0xFF1D9BF0),
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+    if (!mounted) return;
+    if (picked != null) {
+      setState(() => _semesterStartDate = picked);
+    }
+  }
+
+  Widget _buildTotalWeeksTile(ThemeData theme) {
+    final weekNum = _calculateWeekNumber();
+    final isOver = weekNum > _totalWeeks;
+
+    return InkWell(
+      onTap: () => _showTotalWeeksPicker(),
+      borderRadius: BorderRadius.circular(16),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: isOver ? const Color(0xFFFFEBEE) : const Color(0xFFF3E5F5),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(Icons.date_range_rounded, color: isOver ? const Color(0xFFE53935) : const Color(0xFF9C27B0), size: 20),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('学期总周数', style: theme.textTheme.bodyLarge),
+                  const SizedBox(height: 2),
+                  Text(
+                    '超过此周数后将停止课程提醒',
+                    style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: (isOver ? const Color(0xFFE53935) : const Color(0xFF9C27B0)).withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                '$_totalWeeks周',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: isOver ? const Color(0xFFE53935) : const Color(0xFF9C27B0),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Icon(Icons.chevron_right_rounded, color: Colors.grey[400], size: 20),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showTotalWeeksPicker() async {
+    if (!mounted) return;
+    final selected = await showDialog<int>(
+      context: context,
+      builder: (ctx) => _TotalWeeksDialog(initialValue: _totalWeeks),
+    );
+    if (!mounted) return;
+    if (selected != null && selected > 0) {
+      setState(() => _totalWeeks = selected);
+    }
+  }
+
+  // ═══════════════════════════════════════════════
   // 作息时间自定义
   // ═══════════════════════════════════════════════
 
@@ -2177,6 +2729,128 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// 学期总周数选择对话框
+class _TotalWeeksDialog extends StatefulWidget {
+  final int initialValue;
+  const _TotalWeeksDialog({required this.initialValue});
+
+  @override
+  State<_TotalWeeksDialog> createState() => _TotalWeeksDialogState();
+}
+
+class _TotalWeeksDialogState extends State<_TotalWeeksDialog> {
+  late int _value;
+  final int _min = 8;
+  final int _max = 30;
+
+  @override
+  void initState() {
+    super.initState();
+    _value = widget.initialValue.clamp(_min, _max);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    return AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      title: Row(
+        children: [
+          Icon(Icons.date_range_rounded, color: const Color(0xFF9C27B0), size: 22),
+          const SizedBox(width: 10),
+          const Text('设置学期总周数'),
+        ],
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            '超过总周数后，课程提醒和通知将自动停止',
+            style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
+          ),
+          const SizedBox(height: 20),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // 减少按钮
+              _buildButton(
+                icon: Icons.remove_rounded,
+                onTap: () {
+                  if (_value > _min) setState(() => _value--);
+                },
+                color: Colors.grey[400]!,
+              ),
+              const SizedBox(width: 20),
+              // 数字显示
+              Container(
+                width: 80,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF1E1E1E) : const Color(0xFFF5F5F5),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: const Color(0xFF9C27B0).withOpacity(0.3)),
+                ),
+                child: Text(
+                  '$_value',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 32,
+                    fontWeight: FontWeight.w800,
+                    color: const Color(0xFF9C27B0),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 20),
+              // 增加按钮
+              _buildButton(
+                icon: Icons.add_rounded,
+                onTap: () {
+                  if (_value < _max) setState(() => _value++);
+                },
+                color: const Color(0xFF9C27B0),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '范围：$_min ~ $_max 周',
+            style: theme.textTheme.labelSmall?.copyWith(color: Colors.grey[500]),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          style: TextButton.styleFrom(foregroundColor: Colors.grey[600]),
+          child: const Text('取消'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(context, _value),
+          style: TextButton.styleFrom(foregroundColor: const Color(0xFF9C27B0)),
+          child: const Text('确定'),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildButton({required IconData icon, required VoidCallback onTap, required Color color}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 44,
+        height: 44,
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.12),
+          shape: BoxShape.circle,
+        ),
+        child: Icon(icon, color: color, size: 22),
       ),
     );
   }
