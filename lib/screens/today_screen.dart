@@ -837,74 +837,80 @@ class _AnimatedCourseProgressBar extends StatelessWidget {
       ),
       child: Column(
         children: [
-          // 进度条主体
-          Stack(
-            children: [
-              // 背景轨道
-              Container(
-                height: 6,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(3),
-                  color: AppTheme.accentGreen.withOpacity(0.15),
-                ),
-              ),
+          // 进度条主体 - 使用 LayoutBuilder 获取实际宽度
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final progressBarWidth = constraints.maxWidth;
+              final dotOffset = progress.clamp(0.0, 1.0) * progressBarWidth - 5;
               
-              // 渐变进度条
-              AnimatedBuilder(
-                animation: pulseAnimation,
-                builder: (context, child) {
-                  return FractionallySizedBox(
-                    widthFactor: progress.clamp(0.0, 1.0),
-                    child: Container(
-                      height: 6,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(3),
-                        gradient: LinearGradient(
-                          colors: [
-                            AppTheme.accentGreen,
-                            AppTheme.accentGreen.withGreen(200).withBlue(220),
-                          ],
+              return Stack(
+                children: [
+                  // 背景轨道
+                  Container(
+                    height: 6,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(3),
+                      color: AppTheme.accentGreen.withOpacity(0.15),
+                    ),
+                  ),
+                  
+                  // 渐变进度条
+                  AnimatedBuilder(
+                    animation: pulseAnimation,
+                    builder: (context, child) {
+                      return FractionallySizedBox(
+                        widthFactor: progress.clamp(0.0, 1.0),
+                        child: Container(
+                          height: 6,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(3),
+                            gradient: LinearGradient(
+                              colors: [
+                                AppTheme.accentGreen,
+                                AppTheme.accentGreen.withGreen(200).withBlue(220),
+                              ],
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: AppTheme.accentGreen.withOpacity(0.4 + pulseAnimation.value * 0.2),
+                                blurRadius: 6 + pulseAnimation.value * 4,
+                                spreadRadius: pulseAnimation.value * 2,
+                              ),
+                            ],
+                          ),
                         ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: AppTheme.accentGreen.withOpacity(0.4 + pulseAnimation.value * 0.2),
-                            blurRadius: 6 + pulseAnimation.value * 4,
-                            spreadRadius: pulseAnimation.value * 2,
+                      );
+                    },
+                  ),
+                  
+                  // 进度光点 - 使用计算的精确位置
+                  AnimatedBuilder(
+                    animation: pulseAnimation,
+                    builder: (context, child) {
+                      return Positioned(
+                        left: dotOffset.clamp(0.0, progressBarWidth - 10),
+                        top: -2,
+                        child: Container(
+                          width: 10,
+                          height: 10,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.white,
+                            boxShadow: [
+                              BoxShadow(
+                                color: AppTheme.accentGreen.withOpacity(0.8),
+                                blurRadius: 6 + pulseAnimation.value * 4,
+                                spreadRadius: pulseAnimation.value * 2,
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
-                    ),
-                  );
-                },
-              ),
-              
-              // 进度光点
-              AnimatedBuilder(
-                animation: pulseAnimation,
-                builder: (context, child) {
-                  final offset = progress.clamp(0.0, 1.0);
-                  return Positioned(
-                    left: offset * (MediaQuery.of(context).size.width - 64) - 4,
-                    top: -2,
-                    child: Container(
-                      width: 10,
-                      height: 10,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Colors.white,
-                        boxShadow: [
-                          BoxShadow(
-                            color: AppTheme.accentGreen.withOpacity(0.8),
-                            blurRadius: 6 + pulseAnimation.value * 4,
-                            spreadRadius: pulseAnimation.value * 2,
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ],
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              );
+            },
           ),
           
           // 底部信息栏

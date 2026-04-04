@@ -1266,23 +1266,23 @@ class WebService {
     .weather-row {
       font-size: 11px;
       color: var(--text-secondary);
-      padding: 6px 4px;
+      padding: 5px 2px;
       text-align: center;
       border-bottom: 1px dashed var(--border);
       display: flex;
       flex-direction: column;
       align-items: center;
       gap: 2px;
-      min-height: 48px;
+      min-height: 40px;
       justify-content: center;
       border-radius: 8px;
       background: rgba(29, 155, 240, 0.04);
       transition: all 0.2s ease;
+      overflow: hidden;
     }
 
     .weather-row:hover {
       background: rgba(29, 155, 240, 0.08);
-      transform: scale(1.02);
     }
 
     [data-theme="dark"] .weather-row {
@@ -1294,7 +1294,7 @@ class WebService {
     }
 
     .weather-icon {
-      font-size: 18px;
+      font-size: 16px;
       line-height: 1;
     }
 
@@ -1303,22 +1303,24 @@ class WebService {
       flex-direction: column;
       align-items: center;
       gap: 1px;
+      width: 100%;
     }
 
     .weather-temp {
-      font-size: 12px;
+      font-size: 11px;
       font-weight: 600;
       color: var(--text-primary);
-      letter-spacing: 0.3px;
+      letter-spacing: 0;
     }
 
     .weather-desc {
-      font-size: 10px;
+      font-size: 9px;
       color: var(--text-tertiary);
       max-width: 100%;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+      padding: 0 2px;
     }
 
     .weather-empty {

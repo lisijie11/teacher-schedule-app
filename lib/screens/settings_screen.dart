@@ -121,6 +121,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  /// 自动保存（无提示）
+  Future<void> _autoSave() async {
+    await _saveSettings();
+  }
+
   Future<void> _rescheduleAllNotifications() async {
     await NotificationService.instance.cancelAll();
 
@@ -390,7 +395,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 theme: theme,
                 icon: Icons.info_outline_rounded,
                 title: '版本',
-                subtitle: '2.3.0',
+                subtitle: '2.3.2',
               ),
               _buildDivider(isDark),
               _buildInfoTile(
@@ -1191,10 +1196,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ListTile(
                   leading: Icon(Icons.delete_outline, color: Colors.red[400]),
                   title: Text('移除头像', style: TextStyle(color: Colors.red[400])),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    setState(() => _userAvatarPath = '');
-                  },
+                                onTap: () {
+                                  Navigator.pop(ctx);
+                                  setState(() => _userAvatarPath = '');
+                                  _autoSave(); // 自动保存
+                                },
                 ),
               ],
               const SizedBox(height: 8),
@@ -1229,6 +1235,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         // 复制新头像
         File(picked.path).copySync(targetPath);
         setState(() => _userAvatarPath = targetPath);
+        _autoSave(); // 自动保存
       }
     } catch (e) {
       print('[Settings] 选择头像失败: $e');
@@ -1332,7 +1339,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           Switch(
             value: value,
-            onChanged: onChanged,
+            onChanged: (newValue) {
+              onChanged(newValue);
+              _autoSave(); // 自动保存
+            },
           ),
         ],
       ),

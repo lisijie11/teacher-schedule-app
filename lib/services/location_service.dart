@@ -37,49 +37,69 @@ class LocationService {
     return true;
   }
 
-  /// 获取当前位置坐标（带超时和缓存，结合网络定位）
+  /// 获取当前位置坐标（网络定位优先，GPS 备选）
   Future<Position?> getCurrentPosition() async {
     try {
       final hasPermission = await checkAndRequestPermission();
       if (!hasPermission) return null;
 
-      // 先尝试getLastKnownPosition（快速）
-      Position? position = await Geolocator.getLastKnownPosition();
-      if (position != null) {
-        // 检查缓存是否有效
-        if (_lastLocationTime != null &&
-            DateTime.now().difference(_lastLocationTime!) < _cacheDuration) {
-          return position;
-        }
+      // 先尝试 getLastKnownPosition（最快）
+      Position? cachedPosition = await Geolocator.getLastKnownPosition();
+      if (cachedPosition != null && _lastLocationTime != null &&
+          DateTime.now().difference(_lastLocationTime!) < _cacheDuration) {
+        return cachedPosition;
       }
 
-      // 尝试获取新位置（结合网络定位）
+      Position? position;
+
+      // 策略1: 使用 LocationAccuracy.low 强制网络定位（不设置 forceAndroidLocationManager）
       try {
+        print('[LocationService] 尝试网络定位（low 精度）...');
         position = await Geolocator.getCurrentPosition(
-          desiredAccuracy: LocationAccuracy.low,
-          forceAndroidLocationManager: false, // 优先使用融合定位
-          timeLimit: const Duration(seconds: 6),
+          desiredAccuracy: LocationAccuracy.low, // low 精度优先使用网络定位
+          timeLimit: const Duration(seconds: 8),
         );
         _lastLocationTime = DateTime.now();
+        print('[LocationService] 网络定位成功: ${position.latitude}, ${position.longitude}');
         return position;
       } catch (e) {
-        // 如果融合定位失败，尝试 getLastKnownPosition 作为备选
-        print('[LocationService] 融合定位失败，使用缓存: $e');
-        if (position != null) return position;
-        
-        // 最后尝试低精度定位
-        try {
-          position = await Geolocator.getCurrentPosition(
-            desiredAccuracy: LocationAccuracy.lowest,
-            timeLimit: const Duration(seconds: 4),
-          );
-          return position;
-        } catch (_) {
-          return null;
-        }
+        print('[LocationService] 网络定位失败: $e');
+      }
+
+      // 策略2: 使用缓存位置
+      if (cachedPosition != null) {
+        print('[LocationService] 使用缓存位置');
+        return cachedPosition;
+      }
+
+      // 策略3: 最低精度定位（只使用网络）
+      try {
+        print('[LocationService] 尝试最低精度定位...');
+        position = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.lowest,
+          timeLimit: const Duration(seconds: 5),
+        );
+        _lastLocationTime = DateTime.now();
+        print('[LocationService] 最低精度定位成功');
+        return position;
+      } catch (e) {
+        print('[LocationService] 最低精度定位失败: $e');
+      }
+
+      // 策略4: 最后尝试中等精度
+      try {
+        print('[LocationService] 尝试中等精度定位...');
+        position = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.medium,
+          timeLimit: const Duration(seconds: 6),
+        );
+        return position;
+      } catch (e) {
+        print('[LocationService] 所有定位方式均失败: $e');
+        return null;
       }
     } catch (e) {
-      print('[LocationService] 获取位置失败: $e');
+      print('[LocationService] 获取位置异常: $e');
       return null;
     }
   }
