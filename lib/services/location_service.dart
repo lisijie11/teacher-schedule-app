@@ -31,20 +31,9 @@ class LocationService {
 
   /// 获取当前位置坐标（优先网络定位，回退GPS）
   Future<Map<String, double>?> getCurrentPosition() async {
-    try {
-      // 调用原生定位
-      final result = await _channel.invokeMethod<Map>('getNetworkLocation');
-      if (result != null) {
-        final lat = result['latitude'] as double;
-        final lng = result['longitude'] as double;
-        print('[LocationService] 原生定位成功: $lat, $lng');
-        return {'latitude': lat, 'longitude': lng};
-      }
-      return null;
-    } catch (e) {
-      print('[LocationService] 原生定位失败: $e');
-      return null;
-    }
+    // 原生定位已禁用，直接返回 null 使用 IP 定位
+    print('[LocationService] 原生定位已禁用，使用IP定位');
+    return null;
   }
 
   /// 通过IP定位获取城市（备用方案）
@@ -125,7 +114,7 @@ class LocationService {
     }
   }
 
-  /// 一键获取当前城市（组合方法，带缓存，多方案回退）
+  /// 一键获取当前城市（纯IP定位，不依赖原生定位）
   Future<String?> getCurrentCity() async {
     // 优先使用内存缓存
     if (_cachedCity != null) {
@@ -148,25 +137,8 @@ class LocationService {
       }
     } catch (_) {}
 
-    // 方案1：原生定位（网络/GPS）
-    print('[LocationService] 尝试原生定位...');
-    try {
-      final position = await getCurrentPosition();
-      if (position != null) {
-        final cityName = await getCityName(position['latitude']!, position['longitude']!);
-        if (cityName != null) {
-          print('[LocationService] 原生定位成功: $cityName');
-          _cachedCity = cityName;
-          _saveCache(cityName);
-          return cityName;
-        }
-      }
-    } catch (e) {
-      print('[LocationService] 原生定位失败: $e');
-    }
-
-    // 方案2：IP定位（回退方案）
-    print('[LocationService] 尝试IP定位作为备用...');
+    // 直接使用 IP 定位
+    print('[LocationService] 使用IP定位...');
     try {
       final cityName = await getLocationByIP();
       if (cityName != null && cityName.isNotEmpty) {
