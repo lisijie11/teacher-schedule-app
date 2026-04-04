@@ -13,6 +13,8 @@ class MainActivity : FlutterActivity() {
     private val SCHEDULE_DATA_CHANNEL = "com.lisijie.teacher_schedule/schedule_data"
     private val WIDGET_DATA_CHANNEL = "com.lisijie.teacher_schedule/widget_data"
     private val ROUTE_CHANNEL = "com.lisijie.teacher_schedule/widget_route"
+    private val LOCATION_CHANNEL = "com.lisijie.teacher_schedule/location"
+    private val SETTINGS_CHANNEL = "com.lisijie.teacher_schedule/app_settings"
 
     // 存储来自 widget 点击的路由（解决 Activity 复用时 Intent 不更新的问题）
     private var pendingRoute: String = ""
@@ -55,6 +57,35 @@ class MainActivity : FlutterActivity() {
                     result.success(route)
                     // 清除已消费的路由
                     pendingRoute = ""
+                }
+                else -> result.notImplemented()
+            }
+        }
+
+        // ===== 网络定位 Channel =====
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, LOCATION_CHANNEL).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "getNetworkLocation" -> {
+                    NetworkLocationService.getNetworkLocation(this) { lat, lng ->
+                        if (lat != null && lng != null) {
+                            result.success(mapOf("latitude" to lat, "longitude" to lng))
+                        } else {
+                            result.error("LOCATION_FAILED", "网络定位失败", null)
+                        }
+                    }
+                }
+                else -> result.notImplemented()
+            }
+        }
+
+        // ===== 应用设置 Channel =====
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, SETTINGS_CHANNEL).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "openSettings" -> {
+                    val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                    intent.data = Uri.parse("package:$packageName")
+                    startActivity(intent)
+                    result.success(true)
                 }
                 else -> result.notImplemented()
             }

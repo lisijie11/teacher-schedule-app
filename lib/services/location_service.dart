@@ -1,4 +1,4 @@
-import 'package:geolocator/geolocator.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
@@ -13,87 +13,36 @@ class LocationService {
   DateTime? _lastLocationTime;
   static const _cacheDuration = Duration(hours: 1);
 
-  /// 检查并请求位置权限
-  Future<bool> checkAndRequestPermission() async {
-    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) {
-      // 位置服务未开启
+  // 原生定位通道
+  static const _channel = MethodChannel('com.lisijie.teacher_schedule/location');
+
+  /// 打开应用设置页面（用于权限被永久拒绝时）
+  Future<bool> openAppSettings() async {
+    try {
+      // 使用 platform channel 调用原生打开设置
+      const platform = MethodChannel('com.lisijie.teacher_schedule/app_settings');
+      await platform.invokeMethod('openSettings');
+      return true;
+    } catch (e) {
+      print('[LocationService] 打开设置失败: $e');
       return false;
     }
-
-    LocationPermission permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) {
-        return false;
-      }
-    }
-
-    if (permission == LocationPermission.deniedForever) {
-      // 权限被永久拒绝
-      return false;
-    }
-
-    return true;
   }
 
   /// 获取当前位置坐标（仅使用 WiFi 和移动网络定位，完全禁用 GPS）
-  Future<Position?> getCurrentPosition() async {
+  Future<Map<String, double>?> getCurrentPosition() async {
     try {
-      final hasPermission = await checkAndRequestPermission();
-      if (!hasPermission) return null;
-
-      // 先尝试 getLastKnownPosition（最快，可能来自其他应用的网络定位缓存）
-      Position? cachedPosition = await Geolocator.getLastKnownPosition();
-      if (cachedPosition != null && _lastLocationTime != null &&
-          DateTime.now().difference(_lastLocationTime!) < _cacheDuration) {
-        print('[LocationService] 使用缓存位置');
-        return cachedPosition;
+      // 调用原生网络定位
+      final result = await _channel.invokeMethod<Map>('getNetworkLocation');
+      if (result != null) {
+        final lat = result['latitude'] as double;
+        final lng = result['longitude'] as double;
+        print('[LocationService] 原生网络定位成功: $lat, $lng');
+        return {'latitude': lat, 'longitude': lng};
       }
-
-      Position? position;
-
-      // 策略1: 最低精度定位（只用 WiFi 和移动网络，完全禁用 GPS）
-      try {
-        print('[LocationService] 尝试网络定位（WiFi + 移动网络）...');
-        position = await Geolocator.getCurrentPosition(
-          desiredAccuracy: LocationAccuracy.lowest, // lowest 只用网络定位
-          forceAndroidLocationManager: true, // 强制使用 Android LocationManager
-          timeLimit: const Duration(seconds: 10),
-        );
-        _lastLocationTime = DateTime.now();
-        print('[LocationService] 网络定位成功: ${position.latitude}, ${position.longitude}');
-        return position;
-      } catch (e) {
-        print('[LocationService] 网络定位失败: $e');
-      }
-
-      // 策略2: 使用其他应用的缓存位置（可能是网络定位）
-      if (cachedPosition != null) {
-        // 检查精度，如果精度太低（>3000m）说明可能是 GPS 但信号不好
-        if (cachedPosition.accuracy < 3000) {
-          print('[LocationService] 使用其他应用缓存位置（精度: ${cachedPosition.accuracy}m）');
-          return cachedPosition;
-        }
-      }
-
-      // 策略3: 再次尝试（不强制 LocationManager，某些设备优化更好）
-      try {
-        print('[LocationService] 重试网络定位...');
-        position = await Geolocator.getCurrentPosition(
-          desiredAccuracy: LocationAccuracy.lowest,
-          timeLimit: const Duration(seconds: 8),
-        );
-        _lastLocationTime = DateTime.now();
-        print('[LocationService] 重试成功');
-        return position;
-      } catch (e) {
-        print('[LocationService] 重试失败: $e');
-        // 最后返回缓存（即使精度差）
-        return cachedPosition;
-      }
+      return null;
     } catch (e) {
-      print('[LocationService] 获取位置异常: $e');
+      print('[LocationService] 原生网络定位失败: $e');
       return null;
     }
   }
@@ -173,7 +122,7 @@ class LocationService {
       final position = await getCurrentPosition();
       if (position == null) return null;
 
-      final cityName = await getCityName(position.latitude, position.longitude);
+      final cityName = await getCityName(position['latitude']!, position['longitude']!);
       if (cityName != null) {
         _cachedCity = cityName;
         // 保存到缓存
@@ -188,20 +137,5 @@ class LocationService {
       print('[LocationService] 获取当前城市失败: $e');
       return null;
     }
-  }
-
-  /// 检查位置服务是否可用
-  Future<bool> isLocationServiceEnabled() async {
-    return await Geolocator.isLocationServiceEnabled();
-  }
-
-  /// 打开位置设置页面
-  Future<bool> openLocationSettings() async {
-    return await Geolocator.openLocationSettings();
-  }
-
-  /// 打开应用设置页面（用于权限被永久拒绝时）
-  Future<bool> openAppSettings() async {
-    return await Geolocator.openAppSettings();
   }
 }
