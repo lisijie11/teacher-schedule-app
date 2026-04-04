@@ -347,7 +347,18 @@ class WebService {
       String userLocation = box.get('userLocation', defaultValue: '');
 
       // 检查是否是无效位置（需要重新定位）
-      final invalidLocations = ['downtown core', 'unknown', 'localhost', '待定', '定位中...'];
+      // 这些是常见的错误定位结果或默认值
+      final invalidLocations = [
+        'downtown core',
+        'unknown',
+        'localhost',
+        'linping',      // 浙江临平（wttr.in 错误定位）
+        'zhejiang',     // 浙江省（过于宽泛）
+        'hangzhou',     // 杭州（可能是错误定位）
+        '待定',
+        '定位中...',
+      ];
+
       final isInvalid = userLocation.isEmpty ||
                         invalidLocations.any((invalid) =>
                           userLocation.toLowerCase().contains(invalid.toLowerCase()));

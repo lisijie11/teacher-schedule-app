@@ -235,7 +235,14 @@ class _TeacherScheduleAppState extends State<TeacherScheduleApp> with WidgetsBin
       String userLocation = settings.get('userLocation', defaultValue: '');
 
       // 检查是否是无效位置
-      final invalidLocations = ['downtown core', 'unknown', 'localhost', 'linping'];
+      final invalidLocations = [
+        'downtown core',
+        'unknown',
+        'localhost',
+        'linping',
+        'zhejiang',
+        'hangzhou',
+      ];
       final isInvalid = userLocation.isEmpty ||
                         userLocation == '待定' ||
                         userLocation == '定位中...' ||
