@@ -224,8 +224,14 @@ class LocationService {
     if (!forceRefresh) {
       // 优先使用内存缓存
       if (_cachedCity != null) {
-        print('[LocationService] 使用内存缓存: $_cachedCity');
-        return _cachedCity;
+        // 检查缓存是否是错误数据
+        if (_isInvalidLocation(_cachedCity!)) {
+          print('[LocationService] 检测到无效缓存: $_cachedCity，强制重新定位');
+          _cachedCity = null;
+        } else {
+          print('[LocationService] 使用内存缓存: $_cachedCity');
+          return _cachedCity;
+        }
       }
 
       // 尝试从SharedPreferences读取缓存
@@ -234,11 +240,18 @@ class LocationService {
         final cached = prefs.getString('cached_city');
         final cacheTime = prefs.getInt('city_cache_time');
         if (cached != null && cacheTime != null) {
-          final cacheDate = DateTime.fromMillisecondsSinceEpoch(cacheTime);
-          if (DateTime.now().difference(cacheDate) < _cacheDuration) {
-            _cachedCity = cached;
-            print('[LocationService] 使用本地缓存: $cached');
-            return cached;
+          // 检查缓存是否是错误数据
+          if (_isInvalidLocation(cached)) {
+            print('[LocationService] 检测到无效本地缓存: $cached，清除并重新定位');
+            await prefs.remove('cached_city');
+            await prefs.remove('city_cache_time');
+          } else {
+            final cacheDate = DateTime.fromMillisecondsSinceEpoch(cacheTime);
+            if (DateTime.now().difference(cacheDate) < _cacheDuration) {
+              _cachedCity = cached;
+              print('[LocationService] 使用本地缓存: $cached');
+              return cached;
+            }
           }
         }
       } catch (_) {}
@@ -262,6 +275,17 @@ class LocationService {
 
     print('[LocationService] 所有定位方案均失败');
     return null;
+  }
+
+  /// 检查是否是无效的位置名称（需要重新定位）
+  bool _isInvalidLocation(String location) {
+    final lower = location.toLowerCase();
+    // 这些是常见的错误定位结果
+    return lower == 'downtown core' ||
+           lower == 'unknown' ||
+           lower == 'localhost' ||
+           lower.contains('private') ||
+           lower.contains('reserved');
   }
 
   /// 保存缓存

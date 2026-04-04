@@ -12,6 +12,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import '../models/course_model.dart';
 import '../models/todo_model.dart';
 import 'weather_service.dart';
+import 'location_service.dart';
 
 /// 天气数据
 class WeatherData {
@@ -343,7 +344,24 @@ class WebService {
   Future<void> _loadUserLocation() async {
     try {
       final box = Hive.box('settings');
-      final userLocation = box.get('userLocation', defaultValue: '');
+      String userLocation = box.get('userLocation', defaultValue: '');
+
+      // 检查是否是无效位置（需要重新定位）
+      final invalidLocations = ['downtown core', 'unknown', 'localhost', '待定', '定位中...'];
+      final isInvalid = userLocation.isEmpty ||
+                        invalidLocations.any((invalid) =>
+                          userLocation.toLowerCase().contains(invalid.toLowerCase()));
+
+      if (isInvalid) {
+        print('[WebService] 检测到无效位置: "$userLocation"，自动重新定位...');
+        // 自动重新定位
+        final newLocation = await LocationService.instance.getCurrentCity(forceRefresh: true);
+        if (newLocation != null && newLocation.isNotEmpty) {
+          userLocation = newLocation;
+          await box.put('userLocation', userLocation);
+          print('[WebService] 已更新常用地点: $userLocation');
+        }
+      }
 
       if (userLocation.isNotEmpty && userLocation != '待定') {
         print('[WebService] 读取用户常用地点: $userLocation');

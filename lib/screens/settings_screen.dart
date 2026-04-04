@@ -75,6 +75,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _userName = settings.get('userName', defaultValue: '');
     _userLocation = settings.get('userLocation', defaultValue: '待定');
     _userAvatarPath = settings.get('userAvatarPath', defaultValue: '');
+
+    // 检查并修复无效位置
+    final invalidLocations = ['downtown core', 'unknown', 'localhost'];
+    final isInvalid = _userLocation.toLowerCase().trim().isEmpty ||
+                      invalidLocations.any((invalid) =>
+                        _userLocation.toLowerCase().contains(invalid.toLowerCase()));
+    if (isInvalid && _userLocation != '待定') {
+      print('[SettingsScreen] 检测到无效位置: "$_userLocation"，重置为"待定"');
+      _userLocation = '待定';
+      settings.put('userLocation', '待定');
+    }
     // 学期起始日（默认本年9月1日）
     final semesterStartStr = settings.get('semesterStartDate', defaultValue: '');
     if (semesterStartStr.isNotEmpty) {
