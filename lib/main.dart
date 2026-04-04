@@ -229,23 +229,32 @@ class _TeacherScheduleAppState extends State<TeacherScheduleApp> with WidgetsBin
     try {
       final settings = Hive.box('settings');
       final autoLocation = settings.get('autoLocation', defaultValue: true);
-      
+
       if (!autoLocation) return;
-      
-      final userLocation = settings.get('userLocation', defaultValue: '');
-      
-      // 如果用户没有设置过位置，或者位置是默认值，则自动定位
-      if (userLocation.isEmpty || userLocation == '待定' || userLocation == '定位中...') {
-        print('[AutoLocation] 开始自动定位...');
-        final city = await LocationService.instance.getCurrentCity();
-        
+
+      String userLocation = settings.get('userLocation', defaultValue: '');
+
+      // 检查是否是无效位置
+      final invalidLocations = ['downtown core', 'unknown', 'localhost', 'linping'];
+      final isInvalid = userLocation.isEmpty ||
+                        userLocation == '待定' ||
+                        userLocation == '定位中...' ||
+                        invalidLocations.any((invalid) =>
+                          userLocation.toLowerCase().contains(invalid.toLowerCase()));
+
+      // 如果用户没有设置过位置，或者位置是无效值，则自动定位
+      if (isInvalid) {
+        print('[AutoLocation] 检测到无效位置: "$userLocation"，开始自动定位...');
+        final city = await LocationService.instance.getCurrentCity(forceRefresh: true);
+
         if (city != null && city.isNotEmpty) {
-          await settings.put('userLocation', city);
-          print('[AutoLocation] 自动定位成功: $city');
-          
+          userLocation = city;
+          await settings.put('userLocation', userLocation);
+          print('[AutoLocation] 自动定位成功: $userLocation');
+
           // 更新天气数据
-          await WeatherService.instance.fetchWeather(location: city);
-          
+          await WeatherService.instance.fetchWeather(location: userLocation);
+
           // 更新小组件
           await WidgetService.updateWidget();
         }

@@ -81,6 +81,73 @@ class WeatherService {
     'lanzhou': '兰州',
   };
 
+  // 中文地名到英文的反向映射（用于调用 wttr.in API）
+  static const Map<String, String> _chineseToEnglish = {
+    '汕尾': 'Shanwei',
+    '城区': 'Shanwei',
+    '海丰': 'Haifeng',
+    '陆丰': 'Lufeng',
+    '陆河': 'Luhe',
+    '广州': 'Guangzhou',
+    '深圳': 'Shenzhen',
+    '佛山': 'Foshan',
+    '东莞': 'Dongguan',
+    '珠海': 'Zhuhai',
+    '中山': 'Zhongshan',
+    '惠州': 'Huizhou',
+    '江门': 'Jiangmen',
+    '肇庆': 'Zhaoqing',
+    '清远': 'Qingyuan',
+    '韶关': 'Shaoguan',
+    '河源': 'Heyuan',
+    '梅州': 'Meizhou',
+    '潮州': 'Chaozhou',
+    '揭阳': 'Jieyang',
+    '阳江': 'Yangjiang',
+    '云浮': 'Yunfu',
+    '茂名': 'Maoming',
+    '湛江': 'Zhanjiang',
+    '汕头': 'Shantou',
+    '顺德': 'Shunde',
+    '南海': 'Nanhai',
+    '番禺': 'Panyu',
+    '南沙': 'Nansha',
+    '北京': 'Beijing',
+    '上海': 'Shanghai',
+    '天津': 'Tianjin',
+    '重庆': 'Chongqing',
+    '杭州': 'Hangzhou',
+    '南京': 'Nanjing',
+    '成都': 'Chengdu',
+    '武汉': 'Wuhan',
+    '西安': "Xi'an",
+    '长沙': 'Changsha',
+    '郑州': 'Zhengzhou',
+    '济南': 'Jinan',
+    '青岛': 'Qingdao',
+    '大连': 'Dalian',
+    '沈阳': 'Shenyang',
+    '哈尔滨': 'Harbin',
+    '长春': 'Changchun',
+    '昆明': 'Kunming',
+    '贵阳': 'Guiyang',
+    '南宁': 'Nanning',
+    '海口': 'Haikou',
+    '三亚': 'Sanya',
+    '福州': 'Fuzhou',
+    '厦门': 'Xiamen',
+    '南昌': 'Nanchang',
+    '合肥': 'Hefei',
+    '太原': 'Taiyuan',
+    '石家庄': 'Shijiazhuang',
+    '拉萨': 'Lhasa',
+    '乌鲁木齐': 'Urumqi',
+    '呼和浩特': 'Hohhot',
+    '银川': 'Yinchuan',
+    '西宁': 'Xining',
+    '兰州': 'Lanzhou',
+  };
+
   // 天气描述中英文映射表
   static const Map<String, String> _weatherTranslations = {
     // 晴天相关
@@ -191,13 +258,35 @@ class WeatherService {
     return english;
   }
 
+  /// 中文地名转英文（用于调用 wttr.in API）
+  String _chineseToEnglishLocation(String chinese) {
+    // 精确匹配
+    if (_chineseToEnglish.containsKey(chinese)) {
+      return _chineseToEnglish[chinese]!;
+    }
+
+    // 包含匹配（如 "汕尾市城区" -> "Shanwei"）
+    for (final entry in _chineseToEnglish.entries) {
+      if (chinese.contains(entry.key)) {
+        return entry.value;
+      }
+    }
+
+    // 无法翻译则返回原文（wttr.in 会尝试自动识别）
+    return chinese;
+  }
+
   /// 获取天气数据
   Future<WeatherData?> fetchWeather({String? location}) async {
     try {
       final city = location ?? _defaultLocation;
 
+      // 将中文地名转换为英文（wttr.in 不认识中文地名）
+      final englishCity = _chineseToEnglishLocation(city);
+      print('[WeatherService] 查询天气: "$city" -> "$englishCity"');
+
       // 使用 wttr.in API 获取天气
-      final encodedLocation = Uri.encodeComponent(city);
+      final encodedLocation = Uri.encodeComponent(englishCity);
       final url = 'https://wttr.in/$encodedLocation?format=j1&lang=zh';
 
       final request = await HttpClient().getUrl(Uri.parse(url));
