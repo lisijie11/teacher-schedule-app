@@ -395,7 +395,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 theme: theme,
                 icon: Icons.info_outline_rounded,
                 title: '版本',
-                subtitle: '2.3.2',
+                subtitle: '2.3.3',
               ),
               _buildDivider(isDark),
               _buildInfoTile(

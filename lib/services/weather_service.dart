@@ -11,6 +11,96 @@ class WeatherService {
   String _defaultLocation = '佛山';
   WeatherData? _cachedWeather;
 
+  // 天气描述中英文映射表
+  static const Map<String, String> _weatherTranslations = {
+    // 晴天相关
+    'clear': '晴',
+    'sunny': '晴',
+    'partly cloudy': '多云',
+    'cloudy': '多云',
+    'overcast': '阴',
+    'scattered clouds': '少云',
+
+    // 雨天相关
+    'light rain': '小雨',
+    'moderate rain': '中雨',
+    'heavy rain': '大雨',
+    'light rain shower': '小阵雨',
+    'moderate rain shower': '中阵雨',
+    'heavy rain shower': '大阵雨',
+    'rain shower': '阵雨',
+    'rain': '雨',
+    'drizzle': '毛毛雨',
+    'light drizzle': '微雨',
+    'heavy drizzle': '浓毛毛雨',
+    'patchy rain possible': '局部有雨',
+    'patchy light rain': '零星小雨',
+    'patchy moderate rain': '零星中雨',
+    'patchy heavy rain': '零星大雨',
+
+    // 雷雨相关
+    'thunderstorm': '雷暴',
+    'thunderstorm with rain': '雷阵雨',
+    'thunderstorm with heavy rain': '强雷阵雨',
+    'patchy thunderstorm': '局部雷暴',
+    'thundery outbreaks possible': '可能有雷雨',
+
+    // 雪天相关
+    'snow': '雪',
+    'light snow': '小雪',
+    'moderate snow': '中雪',
+    'heavy snow': '大雪',
+    'snow shower': '阵雪',
+    'light snow shower': '小阵雪',
+    'heavy snow shower': '大阵雪',
+    'patchy snow possible': '可能有雪',
+    'blizzard': '暴风雪',
+    'blowing snow': '风吹雪',
+    'freezing drizzle': '冻毛毛雨',
+    'freezing fog': '冻雾',
+    'ice pellets': '冰雹',
+
+    // 雾霾相关
+    'fog': '雾',
+    'mist': '薄雾',
+    'haze': '霾',
+    'smoke': '烟雾',
+
+    // 沙尘相关
+    'sand': '沙',
+    'dust': '尘',
+    'sandstorm': '沙尘暴',
+    'duststorm': '尘暴',
+
+    // 风相关
+    'windy': '大风',
+    'gale': '大风',
+    'storm': '风暴',
+
+    // 其他
+    'unknown': '未知',
+  };
+
+  /// 翻译天气描述为中文
+  String _translateWeather(String english) {
+    final lower = english.toLowerCase().trim();
+
+    // 精确匹配
+    if (_weatherTranslations.containsKey(lower)) {
+      return _weatherTranslations[lower]!;
+    }
+
+    // 包含匹配（处理复合描述）
+    for (final entry in _weatherTranslations.entries) {
+      if (lower.contains(entry.key)) {
+        return entry.value;
+      }
+    }
+
+    // 无法翻译则返回原文
+    return english;
+  }
+
   /// 获取天气数据
   Future<WeatherData?> fetchWeather({String? location}) async {
     try {
@@ -37,8 +127,9 @@ class WeatherService {
 
       final temp = int.tryParse(current['temp_C']?.toString() ?? '20') ?? 20;
       final humidity = int.tryParse(current['humidity']?.toString() ?? '50') ?? 50;
-      final weatherText = current['weatherDesc']?[0]?['value'] ?? '未知';
-      final weatherIcon = _getWeatherIcon(weatherText.toLowerCase());
+      final weatherTextRaw = current['weatherDesc']?[0]?['value'] ?? '未知';
+      final weatherText = _translateWeather(weatherTextRaw);
+      final weatherIcon = _getWeatherIcon(weatherTextRaw.toLowerCase());
 
       // 解析未来天气
       final weather = json['weather'] ?? [];
@@ -56,8 +147,9 @@ class WeatherService {
 
         final maxTemp = int.tryParse(day['maxtempC']?.toString() ?? '25') ?? 25;
         final minTemp = int.tryParse(day['mintempC']?.toString() ?? '15') ?? 15;
-        final desc = day['hourly']?[4]?['weatherDesc']?[0]?['value'] ?? day['hourly']?[0]?['weatherDesc']?[0]?['value'] ?? '晴';
-        final icon = _getWeatherIcon(desc.toLowerCase());
+        final descRaw = day['hourly']?[4]?['weatherDesc']?[0]?['value'] ?? day['hourly']?[0]?['weatherDesc']?[0]?['value'] ?? '晴';
+        final desc = _translateWeather(descRaw);
+        final icon = _getWeatherIcon(descRaw.toLowerCase());
 
         forecasts.add(DailyForecast(
           date: dateStr,
@@ -99,19 +191,20 @@ class WeatherService {
         final hourStr = '${(hourNum ~/ 100).toString().padLeft(2, '0')}:${(hourNum % 100).toString().padLeft(2, '0')}';
 
         final hourTemp = int.tryParse(hour['tempC']?.toString() ?? '20') ?? 20;
-        final hourDesc = hour['weatherDesc']?[0]?['value'] ?? '晴';
-        final hourIcon = _getWeatherIcon(hourDesc.toLowerCase());
+        final hourDescRaw = hour['weatherDesc']?[0]?['value'] ?? '晴';
+        final hourDesc = _translateWeather(hourDescRaw);
+        final hourIcon = _getWeatherIcon(hourDescRaw.toLowerCase());
 
         // 降水概率估算（rain/drizzle/snow 相关则高概率）
         double precipProb = 0.0;
-        final desc = hourDesc.toLowerCase();
-        if (desc.contains('rain') || desc.contains('drizzle')) {
+        final descLower = hourDescRaw.toLowerCase();
+        if (descLower.contains('rain') || descLower.contains('drizzle')) {
           precipProb = 60.0 + (hourlyData.length - i) * 5.0;
-        } else if (desc.contains('thunder')) {
+        } else if (descLower.contains('thunder')) {
           precipProb = 90;
-        } else if (desc.contains('snow')) {
+        } else if (descLower.contains('snow')) {
           precipProb = 70.0;
-        } else if (desc.contains('cloud') || desc.contains('overcast')) {
+        } else if (descLower.contains('cloud') || descLower.contains('overcast')) {
           precipProb = 20.0;
         }
 
@@ -143,7 +236,7 @@ class WeatherService {
 
       // 生成建议
       final clothingAdvice = _getClothingAdvice(temp);
-      final travelAdvice = _getTravelAdvice(weatherText.toLowerCase(), temp);
+      final travelAdvice = _getTravelAdvice(weatherTextRaw.toLowerCase(), temp);
 
       final weatherData = WeatherData(
         location: city,
