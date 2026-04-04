@@ -11,6 +11,7 @@ import 'package:shelf_router/shelf_router.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../models/course_model.dart';
 import '../models/todo_model.dart';
+import 'weather_service.dart';
 
 /// 天气数据
 class WeatherData {
@@ -155,6 +156,9 @@ class WebService {
         print('[WebService] 无法获取设备 IP');
         return false;
       }
+
+      // 读取用户设置的常用地点，并更新天气
+      await _loadUserLocation();
 
       final router = Router();
 
@@ -329,15 +333,27 @@ class WebService {
           _semesterStartDate = DateTime(now.year - 1, 9, 1);
         }
       }
-    } catch (_) {
-      final now = DateTime.now();
-      if (now.month >= 9) {
-        _semesterStartDate = DateTime(now.year, 9, 1);
-      } else if (now.month >= 3) {
-        _semesterStartDate = DateTime(now.year, 3, 1);
+    } catch (e) {
+      print('[WebService] 读取学期起始日失败: $e');
+      _semesterStartDate = DateTime.now();
+    }
+  }
+
+  /// 从 Hive settings 读取用户常用地点，并更新天气
+  Future<void> _loadUserLocation() async {
+    try {
+      final box = Hive.box('settings');
+      final userLocation = box.get('userLocation', defaultValue: '');
+
+      if (userLocation.isNotEmpty && userLocation != '待定') {
+        print('[WebService] 读取用户常用地点: $userLocation');
+        // 使用用户设置的常用地点更新天气
+        await WeatherService.instance.fetchWeather(location: userLocation);
       } else {
-        _semesterStartDate = DateTime(now.year - 1, 9, 1);
+        print('[WebService] 用户未设置常用地点，使用默认天气');
       }
+    } catch (e) {
+      print('[WebService] 读取用户常用地点失败: $e');
     }
   }
 

@@ -36,23 +36,31 @@ class LocationService {
     return null;
   }
 
-  /// 通过IP定位获取城市（备用方案）
+  /// 通过IP定位获取城市（精确到区县）
   Future<String?> getLocationByIP() async {
     try {
       print('[LocationService] 尝试IP定位...');
-      
+
       // 使用 ip-api.com（免费，每分钟45次请求限制）
       final response = await http.get(
-        Uri.parse('http://ip-api.com/json/?lang=zh-CN'),
-        headers: {'User-Agent': 'TeacherScheduleApp/2.3.6'},
+        Uri.parse('http://ip-api.com/json/?lang=zh-CN&fields=status,city,regionName,district,country'),
+        headers: {'User-Agent': 'TeacherScheduleApp/2.4.0'},
       ).timeout(const Duration(seconds: 5));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['status'] == 'success') {
-          final city = data['city']?.toString();
-          print('[LocationService] IP定位成功: $city');
-          return city;
+          // 优先级：区县 > 城市 > 省份
+          String? location = data['district']?.toString(); // 区县
+          if (location == null || location.isEmpty) {
+            location = data['city']?.toString(); // 城市
+          }
+          if (location == null || location.isEmpty) {
+            location = data['regionName']?.toString(); // 省份
+          }
+
+          print('[LocationService] IP定位成功: $location (district=${data['district']}, city=${data['city']}, region=${data['regionName']})');
+          return location;
         }
       }
       return null;
