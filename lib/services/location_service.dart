@@ -13,6 +13,96 @@ class LocationService {
   DateTime? _lastLocationTime;
   static const _cacheDuration = Duration(hours: 1);
 
+  // 地名中英文映射表（常见城市/区域）
+  static const Map<String, String> _locationTranslations = {
+    // 广东
+    'shanwei': '汕尾',
+    'downtown core': '城区',
+    'haifeng': '海丰',
+    'lufeng': '陆丰',
+    'luhe': '陆河',
+    'guangzhou': '广州',
+    'shenzhen': '深圳',
+    'foshan': '佛山',
+    'dongguan': '东莞',
+    'zhuhai': '珠海',
+    'zhongshan': '中山',
+    'huizhou': '惠州',
+    'jiangmen': '江门',
+    'zhaoqing': '肇庆',
+    'qingyuan': '清远',
+    'shaoguan': '韶关',
+    'heyuan': '河源',
+    'meizhou': '梅州',
+    'chaozhou': '潮州',
+    'jieyang': '揭阳',
+    'yangjiang': '阳江',
+    'yunfu': '云浮',
+    'maoming': '茂名',
+    'zhanjiang': '湛江',
+    'shantou': '汕头',
+    'shunde': '顺德',
+    'nanhai': '南海',
+    'panyu': '番禺',
+    'nansha': '南沙',
+
+    // 其他省份常见城市
+    'beijing': '北京',
+    'shanghai': '上海',
+    'tianjin': '天津',
+    'chongqing': '重庆',
+    'hangzhou': '杭州',
+    'nanjing': '南京',
+    'chengdu': '成都',
+    'wuhan': '武汉',
+    'xian': '西安',
+    'changsha': '长沙',
+    'zhengzhou': '郑州',
+    'jinan': '济南',
+    'qingdao': '青岛',
+    'dalian': '大连',
+    'shenyang': '沈阳',
+    'harbin': '哈尔滨',
+    'changchun': '长春',
+    'kunming': '昆明',
+    'guiyang': '贵阳',
+    'nanning': '南宁',
+    'haikou': '海口',
+    'sanya': '三亚',
+    'fuzhou': '福州',
+    'xiamen': '厦门',
+    'nanchang': '南昌',
+    'hefei': '合肥',
+    'taiyuan': '太原',
+    'shijiazhuang': '石家庄',
+    'lhasa': '拉萨',
+    'urumqi': '乌鲁木齐',
+    'hohhot': '呼和浩特',
+    'yinchuan': '银川',
+    'xining': '西宁',
+    'lanzhou': '兰州',
+  };
+
+  /// 翻译地名为中文
+  String _translateLocation(String english) {
+    final lower = english.toLowerCase().trim();
+
+    // 精确匹配
+    if (_locationTranslations.containsKey(lower)) {
+      return _locationTranslations[lower]!;
+    }
+
+    // 包含匹配（如 "Downtown Core, Shanwei" -> "城区"）
+    for (final entry in _locationTranslations.entries) {
+      if (lower.contains(entry.key)) {
+        return entry.value;
+      }
+    }
+
+    // 无法翻译则返回原文
+    return english;
+  }
+
   // 原生定位通道
   static const _channel = MethodChannel('com.lisijie.teacher_schedule/location');
 
@@ -57,6 +147,11 @@ class LocationService {
           }
           if (location == null || location.isEmpty) {
             location = data['regionName']?.toString(); // 省份
+          }
+
+          // 翻译英文地名为中文
+          if (location != null) {
+            location = _translateLocation(location);
           }
 
           print('[LocationService] IP定位成功: $location (district=${data['district']}, city=${data['city']}, region=${data['regionName']})');
