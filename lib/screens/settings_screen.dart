@@ -1655,9 +1655,45 @@ class _SettingsScreenState extends State<SettingsScreen> {
           String tempValue = _userLocation;
           bool isLocating = false;
           String? locatedCity;
+          bool hasAutoLocated = false; // 是否已自动定位
 
           return StatefulBuilder(
             builder: (ctx, setInnerState) {
+              // 自动触发定位（只执行一次）
+              if (!hasAutoLocated) {
+                hasAutoLocated = true;
+                // 延迟执行，确保 UI 已构建
+                Future.delayed(const Duration(milliseconds: 100), () async {
+                  setInnerState(() => isLocating = true);
+                  
+                  try {
+                    // 强制刷新定位
+                    final city = await LocationService.instance.getCurrentCity(forceRefresh: true)
+                        .timeout(const Duration(seconds: 10), onTimeout: () => null);
+                    if (city != null && city.isNotEmpty) {
+                      setInnerState(() {
+                        locatedCity = city;
+                        tempValue = city;
+                        isLocating = false;
+                      });
+                      
+                      // 自动更新地点并保存
+                      setState(() => _userLocation = city);
+                      _autoSave();
+                      
+                      // 刷新天气
+                      try {
+                        await WeatherService.instance.fetchWeather(location: city);
+                      } catch (_) {}
+                    } else {
+                      setInnerState(() => isLocating = false);
+                    }
+                  } catch (e) {
+                    setInnerState(() => isLocating = false);
+                  }
+                });
+              }
+              
               return Container(
                 margin: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
