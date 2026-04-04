@@ -162,12 +162,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
         title: const Text('设置'),
-        actions: [
-          TextButton(
-            onPressed: _saveSettings,
-            child: Text('保存', style: TextStyle(color: theme.colorScheme.primary)),
-          ),
-        ],
       ),
       body: ListView(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -188,6 +182,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 value: _userName.isEmpty ? '未设置' : _userName,
                 onTap: () => _showTextInputDialog('姓名', _userName, (value) {
                   setState(() => _userName = value);
+                  _autoSave(); // 自动保存
                 }),
               ),
               _buildDivider(isDark),
@@ -395,7 +390,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 theme: theme,
                 icon: Icons.info_outline_rounded,
                 title: '版本',
-                subtitle: '2.3.3',
+                subtitle: '2.3.4',
               ),
               _buildDivider(isDark),
               _buildInfoTile(
@@ -485,9 +480,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 4),
         child: GestureDetector(
-          onTap: () => setState(() {
-            _weekdayReminders[day] = !isEnabled;
-          }),
+          onTap: () {
+            setState(() {
+              _weekdayReminders[day] = !isEnabled;
+            });
+            _autoSave(); // 自动保存
+          },
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 200),
             padding: const EdgeInsets.symmetric(vertical: 10),
@@ -538,7 +536,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
       title: '周总结通知',
       subtitle: '每周五 17:00',
       value: _weekSummaryNotification,
-      onChanged: (value) => setState(() => _weekSummaryNotification = value),
+      onChanged: (value) {
+        setState(() => _weekSummaryNotification = value);
+        _autoSave(); // 自动保存
+      },
     );
   }
 
@@ -558,6 +559,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         } else {
           await KeepAliveService.stop();
         }
+        _autoSave(); // 自动保存
         await _checkKeepAliveStatus();
       },
     );
@@ -1475,7 +1477,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           PopupMenuButton<int>(
             initialValue: _reminderMinutes,
-            onSelected: (v) => setState(() => _reminderMinutes = v),
+            onSelected: (v) {
+              setState(() => _reminderMinutes = v);
+              _autoSave(); // 自动保存
+            },
             itemBuilder: (context) => reminderOptions.entries
               .map((e) => PopupMenuItem(
                 value: e.key,
@@ -1566,7 +1571,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget _buildThemeChip(ThemeData theme, String label, ThemeMode mode, ThemeProvider provider) {
     final isSelected = provider.themeMode == mode;
     return GestureDetector(
-      onTap: () => provider.setTheme(mode),
+      onTap: () {
+        provider.setTheme(mode);
+        _autoSave(); // 自动保存
+      },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -1687,6 +1695,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                     isLocating = false;
                                   });
                                   
+                                  // 自动更新地点并保存
+                                  setState(() => _userLocation = city);
+                                  _autoSave(); // 自动保存
+                                  
+                                  // 刷新天气
+                                  try {
+                                    await WeatherService.instance.fetchWeather(location: city);
+                                  } catch (_) {}
+                                  
                                   // 显示成功提示
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     SnackBar(
@@ -1694,7 +1711,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                         children: [
                                           const Icon(Icons.check_circle_rounded, color: Colors.white, size: 18),
                                           const SizedBox(width: 8),
-                                          Text('定位成功: $city'),
+                                          Text('定位成功: $city，已自动更新'),
                                         ],
                                       ),
                                       backgroundColor: AppTheme.accentGreen,
@@ -1902,6 +1919,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               onPressed: () {
                                 setState(() => _userLocation = tempValue);
                                 Navigator.pop(ctx);
+                                _autoSave(); // 自动保存
+                                // 刷新天气
+                                WeatherService.instance.fetchWeather(location: tempValue).catchError((_) {});
                               },
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: theme.colorScheme.primary,
@@ -2577,6 +2597,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (!mounted) return;
     if (picked != null) {
       setState(() => _semesterStartDate = picked);
+      _autoSave(); // 自动保存
     }
   }
 
@@ -2646,6 +2667,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (!mounted) return;
     if (selected != null && selected > 0) {
       setState(() => _totalWeeks = selected);
+      _autoSave(); // 自动保存
     }
   }
 

@@ -37,27 +37,29 @@ class LocationService {
     return true;
   }
 
-  /// 获取当前位置坐标（网络定位优先，GPS 备选）
+  /// 获取当前位置坐标（仅使用 WiFi 和移动网络定位，完全禁用 GPS）
   Future<Position?> getCurrentPosition() async {
     try {
       final hasPermission = await checkAndRequestPermission();
       if (!hasPermission) return null;
 
-      // 先尝试 getLastKnownPosition（最快）
+      // 先尝试 getLastKnownPosition（最快，可能来自其他应用的网络定位缓存）
       Position? cachedPosition = await Geolocator.getLastKnownPosition();
       if (cachedPosition != null && _lastLocationTime != null &&
           DateTime.now().difference(_lastLocationTime!) < _cacheDuration) {
+        print('[LocationService] 使用缓存位置');
         return cachedPosition;
       }
 
       Position? position;
 
-      // 策略1: 使用 LocationAccuracy.low 强制网络定位（不设置 forceAndroidLocationManager）
+      // 策略1: 最低精度定位（只用 WiFi 和移动网络，完全禁用 GPS）
       try {
-        print('[LocationService] 尝试网络定位（low 精度）...');
+        print('[LocationService] 尝试网络定位（WiFi + 移动网络）...');
         position = await Geolocator.getCurrentPosition(
-          desiredAccuracy: LocationAccuracy.low, // low 精度优先使用网络定位
-          timeLimit: const Duration(seconds: 8),
+          desiredAccuracy: LocationAccuracy.lowest, // lowest 只用网络定位
+          forceAndroidLocationManager: true, // 强制使用 Android LocationManager
+          timeLimit: const Duration(seconds: 10),
         );
         _lastLocationTime = DateTime.now();
         print('[LocationService] 网络定位成功: ${position.latitude}, ${position.longitude}');
@@ -66,37 +68,29 @@ class LocationService {
         print('[LocationService] 网络定位失败: $e');
       }
 
-      // 策略2: 使用缓存位置
+      // 策略2: 使用其他应用的缓存位置（可能是网络定位）
       if (cachedPosition != null) {
-        print('[LocationService] 使用缓存位置');
-        return cachedPosition;
+        // 检查精度，如果精度太低（>3000m）说明可能是 GPS 但信号不好
+        if (cachedPosition.accuracy < 3000) {
+          print('[LocationService] 使用其他应用缓存位置（精度: ${cachedPosition.accuracy}m）');
+          return cachedPosition;
+        }
       }
 
-      // 策略3: 最低精度定位（只使用网络）
+      // 策略3: 再次尝试（不强制 LocationManager，某些设备优化更好）
       try {
-        print('[LocationService] 尝试最低精度定位...');
+        print('[LocationService] 重试网络定位...');
         position = await Geolocator.getCurrentPosition(
           desiredAccuracy: LocationAccuracy.lowest,
-          timeLimit: const Duration(seconds: 5),
+          timeLimit: const Duration(seconds: 8),
         );
         _lastLocationTime = DateTime.now();
-        print('[LocationService] 最低精度定位成功');
+        print('[LocationService] 重试成功');
         return position;
       } catch (e) {
-        print('[LocationService] 最低精度定位失败: $e');
-      }
-
-      // 策略4: 最后尝试中等精度
-      try {
-        print('[LocationService] 尝试中等精度定位...');
-        position = await Geolocator.getCurrentPosition(
-          desiredAccuracy: LocationAccuracy.medium,
-          timeLimit: const Duration(seconds: 6),
-        );
-        return position;
-      } catch (e) {
-        print('[LocationService] 所有定位方式均失败: $e');
-        return null;
+        print('[LocationService] 重试失败: $e');
+        // 最后返回缓存（即使精度差）
+        return cachedPosition;
       }
     } catch (e) {
       print('[LocationService] 获取位置异常: $e');
