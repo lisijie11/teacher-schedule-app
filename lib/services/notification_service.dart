@@ -624,6 +624,7 @@ class NotificationService {
   }
 
   /// 核心检查逻辑（与今日面板一致）
+  /// 关键修复：必须检查是否有实际课程，避免空时间段也触发通知
   void _checkAndNotify() {
     try {
       final now = DateTime.now();
@@ -632,22 +633,6 @@ class NotificationService {
 
       // 作息表
       final periods = SchedulePresets.getPeriodsForWeekday(todayWeekday);
-
-      // 计算当前/下一节课（与 today_screen.dart 完全一致）
-      ClassPeriod? currentPeriod;
-      ClassPeriod? nextPeriod;
-      int? minutesToNext;
-
-      for (final period in periods) {
-        final startMin = period.startHour * 60 + period.startMinute;
-        final endMin = period.endHour * 60 + period.endMinute;
-        if (nowMinutes >= startMin && nowMinutes < endMin) {
-          currentPeriod = period;
-        } else if (nowMinutes < startMin && nextPeriod == null) {
-          nextPeriod = period;
-          minutesToNext = startMin - nowMinutes;
-        }
-      }
 
       // 读取课程数据
       final box = Hive.box<CourseEntry>('courses');
@@ -661,13 +646,50 @@ class NotificationService {
         }
       }
 
-      if (currentPeriod != null) {
+      // ── 查找当前和下一节有课程的时间段 ──
+      ClassPeriod? currentPeriod;
+      ClassPeriod? nextPeriod;
+      CourseEntry? currentCourse;
+      CourseEntry? nextCourse;
+      int? minutesToNext;
+
+      // 遍历所有时间段，找到当前正在上课的时间段（必须有课程）
+      for (final period in periods) {
+        final startMin = period.startHour * 60 + period.startMinute;
+        final endMin = period.endHour * 60 + period.endMinute;
+
+        if (nowMinutes >= startMin && nowMinutes < endMin) {
+          // 当前时间段
+          final course = getCourse(period.index);
+          if (course != null && course.courseName.isNotEmpty) {
+            currentPeriod = period;
+            currentCourse = course;
+            break; // 找到了，退出循环
+          }
+        }
+      }
+
+      // 如果当前没有课程，查找下一节有课程的时间段
+      if (currentPeriod == null) {
+        for (final period in periods) {
+          final startMin = period.startHour * 60 + period.startMinute;
+
+          if (nowMinutes < startMin) {
+            final course = getCourse(period.index);
+            if (course != null && course.courseName.isNotEmpty) {
+              nextPeriod = period;
+              nextCourse = course;
+              minutesToNext = startMin - nowMinutes;
+              break; // 找到了，退出循环
+            }
+          }
+        }
+      }
+
+      if (currentPeriod != null && currentCourse != null) {
         // ── 上课中：启动常驻进度通知 ──
-        final course = getCourse(currentPeriod.index);
-        final courseName = (course?.courseName ?? '').isNotEmpty
-            ? course!.courseName : currentPeriod.name;
-        final location = (course?.classroom ?? '').isNotEmpty
-            ? course!.classroom : '';
+        final courseName = currentCourse.courseName;
+        final location = currentCourse.classroom;
         final startTime = DateTime(
           now.year, now.month, now.day,
           currentPeriod.startHour, currentPeriod.startMinute,
@@ -689,21 +711,16 @@ class NotificationService {
         // ── 不在上课：隐藏进度通知 ──
         hideClassProgress();
 
-        // ── 上课前30分钟：发送提醒 ──
-        if (nextPeriod != null && minutesToNext != null && minutesToNext <= 30) {
+        // ── 上课前30分钟：发送提醒（必须有课程）──
+        if (nextPeriod != null && nextCourse != null && 
+            minutesToNext != null && minutesToNext <= 30) {
           final notifKey = DateTime(now.year, now.month, now.day, nextPeriod.startHour);
           // 防止重复通知
           if (_lastNotifiedPeriod != notifKey) {
-            final course = getCourse(nextPeriod.index);
-            final courseName = (course?.courseName ?? '').isNotEmpty
-                ? course!.courseName : nextPeriod.name;
-            final location = (course?.classroom ?? '').isNotEmpty
-                ? course!.classroom : '';
-
             _showSmartReminder(
               period: nextPeriod,
-              courseName: courseName,
-              location: location,
+              courseName: nextCourse.courseName,
+              location: nextCourse.classroom,
               minutesLeft: minutesToNext,
             );
             _lastNotifiedPeriod = notifKey;
