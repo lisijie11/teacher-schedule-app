@@ -56,22 +56,45 @@ class WidgetService {
 
       // ── 作息表 ──
       final periods = SchedulePresets.getPeriodsForWeekday(todayWeekday);
+      final box = Hive.box<CourseEntry>('courses');
 
-      // ── 计算当前/下一节课 ──
+      // ── 查找当前和下一节有课程的时间段 ──
       ClassPeriod? currentPeriod;
       ClassPeriod? nextPeriod;
+      CourseEntry? currentCourse;
+      CourseEntry? nextCourse;
 
+      // 遍历所有时间段，找到当前正在上课的时间段
       for (final period in periods) {
         final startMin = period.startHour * 60 + period.startMinute;
         final endMin = period.endHour * 60 + period.endMinute;
+
         if (nowMinutes >= startMin && nowMinutes < endMin) {
-          currentPeriod = period;
-        } else if (nowMinutes < startMin && nextPeriod == null) {
-          nextPeriod = period;
+          // 当前时间段
+          final course = _getCourseForPeriod(box, todayWeekday, period.index);
+          if (course != null && course.courseName.isNotEmpty) {
+            currentPeriod = period;
+            currentCourse = course;
+            break; // 找到了，退出循环
+          }
         }
       }
 
-      final box = Hive.box<CourseEntry>('courses');
+      // 如果当前没有课程，查找下一节有课程的时间段
+      if (currentPeriod == null) {
+        for (final period in periods) {
+          final startMin = period.startHour * 60 + period.startMinute;
+
+          if (nowMinutes < startMin) {
+            final course = _getCourseForPeriod(box, todayWeekday, period.index);
+            if (course != null && course.courseName.isNotEmpty) {
+              nextPeriod = period;
+              nextCourse = course;
+              break; // 找到了，退出循环
+            }
+          }
+        }
+      }
 
       // ── 构建所有课程列表 ──
       final allCoursesJson = <Map<String, dynamic>>[];
@@ -112,7 +135,8 @@ class WidgetService {
       Map<String, dynamic>? highlightCourseJson;
       Map<String, dynamic>? tomorrowCourseJson; // 明天课程信息（今日完成后显示）
 
-      if (currentPeriod != null) {
+      if (currentPeriod != null && currentCourse != null) {
+        // 正在上课
         state = 'ongoing';
         final startMin = currentPeriod.startHour * 60 + currentPeriod.startMinute;
         final endMin = currentPeriod.endHour * 60 + currentPeriod.endMinute;
@@ -120,20 +144,29 @@ class WidgetService {
         final total = endMin - startMin;
         final progress = total > 0 ? ((elapsed * 100) / total).round() : 0;
 
-        highlightCourseJson = allCoursesJson.firstWhere(
-          (c) => c['status'] == 'ongoing',
-          orElse: () => {'id': '', 'name': '', 'location': '', 'startTime': '', 'endTime': '', 'status': 'ongoing'},
-        );
-        highlightCourseJson['progress'] = progress;
-        highlightCourseJson['section'] = currentPeriod.name;
-      } else if (nextPeriod != null) {
+        highlightCourseJson = {
+          'id': 'p${currentPeriod.index}',
+          'name': currentCourse.courseName,
+          'location': currentCourse.classroom,
+          'startTime': currentPeriod.startTime,
+          'endTime': currentPeriod.endTime,
+          'status': 'ongoing',
+          'progress': progress,
+          'section': currentPeriod.name,
+        };
+      } else if (nextPeriod != null && nextCourse != null) {
+        // 即将上课
         state = 'upcoming';
-        highlightCourseJson = allCoursesJson.firstWhere(
-          (c) => c['status'] == 'upcoming',
-          orElse: () => {'id': '', 'name': '', 'location': '', 'startTime': '', 'endTime': '', 'status': 'upcoming'},
-        );
-        highlightCourseJson['progress'] = 0;
-        highlightCourseJson['section'] = nextPeriod.name;
+        highlightCourseJson = {
+          'id': 'p${nextPeriod.index}',
+          'name': nextCourse.courseName,
+          'location': nextCourse.classroom,
+          'startTime': nextPeriod.startTime,
+          'endTime': nextPeriod.endTime,
+          'status': 'upcoming',
+          'progress': 0,
+          'section': nextPeriod.name,
+        };
       } else if (periods.isNotEmpty && nowMinutes >= (periods.last.endHour * 60 + periods.last.endMinute)) {
         state = 'completed';
         // 获取明天课程信息
