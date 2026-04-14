@@ -1,6 +1,7 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+import 'package:hive/hive.dart';
 import 'dart:async';
 import '../theme.dart';
 import '../models/schedule_model.dart';
@@ -64,6 +65,26 @@ class _TodayScreenState extends State<TodayScreen> with TickerProviderStateMixin
     final periods = SchedulePresets.getPeriodsForWeekday(todayWeekday);
     final modeLabel = SchedulePresets.getModeLabel(todayWeekday);
 
+    // 计算当前周数
+    int currentWeek = 1;
+    int totalWeeks = 20;
+    try {
+      final settings = Hive.box('settings');
+      final semesterStartStr = settings.get('semesterStartDate', defaultValue: '');
+      totalWeeks = settings.get('totalWeeks', defaultValue: 20);
+      if (semesterStartStr.isNotEmpty) {
+        final semesterStart = DateTime.parse(semesterStartStr);
+        final daysSinceStart = _now.difference(semesterStart).inDays;
+        final startWeekday = semesterStart.weekday; // 1=周一
+        final adjustedDays = daysSinceStart + (startWeekday - 1);
+        currentWeek = (adjustedDays / 7).floor() + 1;
+        if (currentWeek < 1) currentWeek = 1;
+        if (currentWeek > totalWeeks) currentWeek = totalWeeks;
+      }
+    } catch (e) {
+      // 计算失败时使用默认值
+    }
+
     final nowMinutes = _now.hour * 60 + _now.minute;
     ClassPeriod? currentPeriod;
     ClassPeriod? nextPeriod;
@@ -102,7 +123,7 @@ class _TodayScreenState extends State<TodayScreen> with TickerProviderStateMixin
           slivers: [
             // 澎湃OS3 风格顶部
             SliverToBoxAdapter(
-              child: _buildHeader(context, isDark, dayType, holidayNote, modeLabel, passedCount, periods.length, progress),
+              child: _buildHeader(context, isDark, dayType, holidayNote, modeLabel, passedCount, periods.length, progress, currentWeek, totalWeeks),
             ),
             
             // 状态卡片
@@ -158,6 +179,8 @@ class _TodayScreenState extends State<TodayScreen> with TickerProviderStateMixin
     int passedCount,
     int totalCount,
     double progress,
+    int currentWeek,
+    int totalWeeks,
   ) {
     final theme = Theme.of(context);
     final weekdays = ['', '周一', '周二', '周三', '周四', '周五', '周六', '周日'];
@@ -214,6 +237,22 @@ class _TodayScreenState extends State<TodayScreen> with TickerProviderStateMixin
                       dateStr,
                       style: theme.textTheme.bodyMedium?.copyWith(
                         color: theme.textTheme.bodySmall?.color,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.primary.withOpacity(isDark ? 0.2 : 0.1),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        '第$currentWeek周 / 共$totalWeeks周',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: theme.colorScheme.primary,
+                        ),
                       ),
                     ),
                   ],
