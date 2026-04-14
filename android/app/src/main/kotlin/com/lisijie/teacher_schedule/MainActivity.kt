@@ -117,6 +117,13 @@ class MainActivity : FlutterActivity() {
                     android.util.Log.d("WidgetData", "触发小组件刷新: $widgetName")
                     result.success(true)
                 }
+                // ========== 全局刷新回调 ==========
+                "onWidgetRefreshRequested" -> {
+                    // Kotlin 端请求 Flutter 端刷新小组件数据
+                    // 通过 EventChannel 通知 Flutter
+                    android.util.Log.d("WidgetData", "收到小组件刷新请求")
+                    result.success(true)
+                }
                 // ========== 全局刷新控制 ==========
                 "startGlobalRefresh" -> {
                     GlobalRefreshManager.start(this)
