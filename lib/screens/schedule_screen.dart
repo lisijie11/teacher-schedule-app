@@ -5,6 +5,12 @@ import '../models/schedule_model.dart';
 import '../models/course_model.dart';
 import '../services/notification_service.dart';
 
+/// 周数选择控制器
+class _WeekTypeController {
+  int weekTypeIndex = 0;
+  List<int>? customWeeks;
+}
+
 class ScheduleScreen extends StatefulWidget {
   final dynamic userInfo;
 
@@ -21,9 +27,8 @@ class _ScheduleScreenState extends State<ScheduleScreen>
   // 周几标签
   static const List<String> _weekdayLabels = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
 
-  // 临时变量用于周数选择
-  int _tempWeekType = 0;
-  List<int>? _tempCustomWeeks;
+  // 周数选择控制器
+  final _WeekTypeController _weekTypeCtrl = _WeekTypeController();
 
   @override
   void initState() {
@@ -379,8 +384,8 @@ class _ScheduleScreenState extends State<ScheduleScreen>
     int selectedColor = existing?.colorIndex ?? 0;
     
     // 初始化周数设置
-    _tempWeekType = existing?.weekTypeIndex ?? 0;
-    _tempCustomWeeks = existing?.customWeeks != null 
+    _weekTypeCtrl.weekTypeIndex = existing?.weekTypeIndex ?? 0;
+    _weekTypeCtrl.customWeeks = existing?.customWeeks != null 
         ? List<int>.from(existing!.customWeeks!) 
         : null;
     
@@ -603,8 +608,6 @@ class _ScheduleScreenState extends State<ScheduleScreen>
                 // 周数类型选择
                 StatefulBuilder(
                   builder: (ctx, setWeekS) {
-                    int currentWeekType = existing?.weekTypeIndex ?? 0;
-                    List<int>? currentCustomWeeks = existing?.customWeeks;
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -613,27 +616,25 @@ class _ScheduleScreenState extends State<ScheduleScreen>
                           spacing: 8,
                           runSpacing: 8,
                           children: [
-                            _buildWeekTypeChip(ctx, '全学期', currentWeekType == 0, 
-                                () => setWeekS(() { currentWeekType = 0; }), 
+                            _buildWeekTypeChip(ctx, '全学期', _weekTypeCtrl.weekTypeIndex == 0, 
+                                () => setWeekS(() { _weekTypeCtrl.weekTypeIndex = 0; }), 
                                 CourseEntry.palette[selectedColor], sheetDark),
-                            _buildWeekTypeChip(ctx, '单周', currentWeekType == 1,
-                                () => setWeekS(() { currentWeekType = 1; }),
+                            _buildWeekTypeChip(ctx, '单周', _weekTypeCtrl.weekTypeIndex == 1,
+                                () => setWeekS(() { _weekTypeCtrl.weekTypeIndex = 1; }),
                                 CourseEntry.palette[selectedColor], sheetDark),
-                            _buildWeekTypeChip(ctx, '双周', currentWeekType == 2,
-                                () => setWeekS(() { currentWeekType = 2; }),
+                            _buildWeekTypeChip(ctx, '双周', _weekTypeCtrl.weekTypeIndex == 2,
+                                () => setWeekS(() { _weekTypeCtrl.weekTypeIndex = 2; }),
                                 CourseEntry.palette[selectedColor], sheetDark),
-                            _buildWeekTypeChip(ctx, '自定义', currentWeekType == 3,
+                            _buildWeekTypeChip(ctx, '自定义', _weekTypeCtrl.weekTypeIndex == 3,
                                 () => setWeekS(() {
-                                  currentWeekType = 3;
-                                  if (currentCustomWeeks == null) {
-                                    currentCustomWeeks = [];
-                                  }
+                                  _weekTypeCtrl.weekTypeIndex = 3;
+                                  _weekTypeCtrl.customWeeks ??= [];
                                 }),
                                 CourseEntry.palette[selectedColor], sheetDark),
                           ],
                         ),
                         // 自定义周数选择
-                        if (currentWeekType == 3) ...[
+                        if (_weekTypeCtrl.weekTypeIndex == 3) ...[
                           const SizedBox(height: 12),
                           Container(
                             padding: const EdgeInsets.all(12),
@@ -661,7 +662,7 @@ class _ScheduleScreenState extends State<ScheduleScreen>
                                       onPressed: () {
                                         // 默认选择所有周
                                         setWeekS(() {
-                                          currentCustomWeeks = List<int>.generate(20, (i) => i + 1);
+                                          _weekTypeCtrl.customWeeks = List<int>.generate(20, (i) => i + 1);
                                         });
                                       },
                                       child: Text(
@@ -680,16 +681,16 @@ class _ScheduleScreenState extends State<ScheduleScreen>
                                   runSpacing: 6,
                                   children: List.generate(20, (i) {
                                     int week = i + 1;
-                                    bool selected = currentCustomWeeks?.contains(week) ?? false;
+                                    bool selected = _weekTypeCtrl.customWeeks?.contains(week) ?? false;
                                     return GestureDetector(
                                       onTap: () {
                                         setWeekS(() {
-                                          currentCustomWeeks ??= [];
+                                          _weekTypeCtrl.customWeeks ??= [];
                                           if (selected) {
-                                            currentCustomWeeks!.remove(week);
+                                            _weekTypeCtrl.customWeeks!.remove(week);
                                           } else {
-                                            currentCustomWeeks!.add(week);
-                                            currentCustomWeeks!.sort();
+                                            _weekTypeCtrl.customWeeks!.add(week);
+                                            _weekTypeCtrl.customWeeks!.sort();
                                           }
                                         });
                                       },
@@ -783,9 +784,9 @@ class _ScheduleScreenState extends State<ScheduleScreen>
                         );
                         return;
                       }
-                      // 获取周数设置（从外部的 _tempWeekType 和 _tempCustomWeeks 获取）
-                      final weekTypeToSave = _tempWeekType;
-                      final customWeeksToSave = weekTypeToSave == 3 ? _tempCustomWeeks : null;
+                      // 获取周数设置（从外部的 _weekTypeCtrl 获取）
+                      final weekTypeToSave = _weekTypeCtrl.weekTypeIndex;
+                      final customWeeksToSave = weekTypeToSave == 3 ? _weekTypeCtrl.customWeeks : null;
                       
                       final entry = CourseEntry(
                         id: existing?.id ??
