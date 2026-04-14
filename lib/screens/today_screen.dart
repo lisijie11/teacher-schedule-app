@@ -5,6 +5,7 @@ import 'dart:async';
 import '../theme.dart';
 import '../models/schedule_model.dart';
 import '../models/course_model.dart';
+import '../models/todo_model.dart';
 import '../services/holiday_service.dart';
 import '../services/notification_service.dart';
 import '../services/calendar_service.dart';
@@ -85,6 +86,14 @@ class _TodayScreenState extends State<TodayScreen> with TickerProviderStateMixin
     }).length;
     final progress = periods.isEmpty ? 0.0 : passedCount / periods.length;
 
+    // 计算今日有课程的节数
+    final courseProvider = context.watch<CourseProvider>();
+    final todayCourseCount = periods.where((period) {
+      final course = courseProvider.getEntry(todayWeekday, period.index);
+      return course != null && course.courseName.isNotEmpty;
+    }).length;
+    final hasNoCoursesToday = todayCourseCount == 0;
+
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
       body: SafeArea(
@@ -128,64 +137,11 @@ class _TodayScreenState extends State<TodayScreen> with TickerProviderStateMixin
               ),
             ),
             
-            // 今日课程标题
+            // 今日内容区（有课显示课程，没课显示待办）
             SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
-                child: Row(
-                  children: [
-                    Text(
-                      '今日课程',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.primary.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        '共 ${periods.length} 节',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: theme.colorScheme.primary,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            
-            // 课程列表
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 120),
-              sliver: SliverList(
-                delegate: SliverChildBuilderDelegate(
-                  (context, index) {
-                    final period = periods[index];
-                    final startMin = period.startHour * 60 + period.startMinute;
-                    final endMin = period.endHour * 60 + period.endMinute;
-                    
-                    final courseProvider = context.watch<CourseProvider>();
-                    final course = courseProvider.getEntry(todayWeekday, period.index);
-                    final hasCourse = course != null && course.courseName.isNotEmpty;
-                    
-                    final isActive = nowMinutes >= startMin && nowMinutes < endMin && hasCourse;
-                    final isPast = nowMinutes >= endMin;
-                    final isNext = !isActive && !isPast && hasCourse && nextPeriod?.index == period.index;
-
-                    return _buildPeriodTile(
-                      context, isDark, period, isActive, isPast, isNext, nowMinutes, course,
-                    );
-                  },
-                  childCount: periods.length,
-                ),
-              ),
+              child: hasNoCoursesToday 
+                ? _buildTodoSection(context, isDark, nowMinutes)
+                : _buildCourseSection(context, isDark, periods, todayWeekday, nowMinutes, passedCount),
             ),
           ],
         ),
@@ -802,6 +758,300 @@ class _TodayScreenState extends State<TodayScreen> with TickerProviderStateMixin
               isDark: isDark,
               pulseAnimation: _pulseAnimation,
             ),
+        ],
+      ),
+    );
+  }
+
+  /// 构建待办事项区域（今日无课程时显示）
+  Widget _buildTodoSection(BuildContext context, bool isDark, int nowMinutes) {
+    final theme = Theme.of(context);
+    
+    return Consumer<TodoProvider>(
+      builder: (context, todoProvider, _) {
+        final todos = todoProvider.todos;
+        
+        // 获取未完成且未过期的待办
+        final pendingTodos = todos.where((t) => !t.isDone).toList();
+        
+        // 按优先级排序（priority: 0=普通, 1=重要, 2=紧急）
+        pendingTodos.sort((a, b) => b.priority.compareTo(a.priority));
+        
+        final displayTodos = pendingTodos.take(5).toList();
+        
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 待办标题
+              Padding(
+                padding: const EdgeInsets.fromLTRB(4, 0, 4, 12),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: AppTheme.accentOrange.withOpacity(isDark ? 0.2 : 0.1),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.checklist_rounded, size: 16, color: AppTheme.accentOrange),
+                          const SizedBox(width: 6),
+                          Text(
+                            '今日待办',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                              color: AppTheme.accentOrange,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Spacer(),
+                    Text(
+                      '${pendingTodos.length} 项待处理',
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+              ),
+              
+              // 空状态
+              if (displayTodos.isEmpty)
+                Container(
+                  padding: const EdgeInsets.all(32),
+                  decoration: BoxDecoration(
+                    color: theme.cardColor,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: theme.colorScheme.outline.withOpacity(0.3),
+                    ),
+                  ),
+                  child: Center(
+                    child: Column(
+                      children: [
+                        Icon(
+                          Icons.self_improvement_rounded,
+                          size: 48,
+                          color: AppTheme.accentTeal.withOpacity(0.6),
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          '今日没有课程',
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '待办清单也是空的，好好休息吧 ✨',
+                          style: theme.textTheme.bodySmall,
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              else
+                // 待办列表
+                ...displayTodos.map((todo) => _buildTodoTile(context, isDark, todo)),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  /// 构建单个待办事项卡片
+  Widget _buildTodoTile(BuildContext context, bool isDark, TodoItem todo) {
+    final theme = Theme.of(context);
+    
+    // priority: 0=普通, 1=重要, 2=紧急
+    Color priorityColor;
+    String priorityLabel;
+    switch (todo.priority) {
+      case 2:
+        priorityColor = Colors.red;
+        priorityLabel = '紧急';
+        break;
+      case 1:
+        priorityColor = AppTheme.accentOrange;
+        priorityLabel = '重要';
+        break;
+      default:
+        priorityColor = AppTheme.accentTeal;
+        priorityLabel = '一般';
+    }
+    
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: theme.cardColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: theme.colorScheme.outline.withOpacity(0.3),
+        ),
+      ),
+      child: Row(
+        children: [
+          // 优先级圆点
+          Container(
+            width: 10,
+            height: 10,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: priorityColor,
+              boxShadow: [
+                BoxShadow(
+                  color: priorityColor.withOpacity(0.4),
+                  blurRadius: 4,
+                  spreadRadius: 1,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 14),
+          
+          // 待办内容
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  todo.title,
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    decoration: todo.isDone ? TextDecoration.lineThrough : null,
+                    color: todo.isDone 
+                      ? theme.textTheme.bodySmall?.color 
+                      : theme.textTheme.bodyLarge?.color,
+                  ),
+                ),
+                if (todo.note != null && todo.note!.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      todo.note!,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.textTheme.bodySmall?.color?.withOpacity(0.7),
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          
+          // 优先级标签
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: priorityColor.withOpacity(isDark ? 0.2 : 0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              priorityLabel,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: priorityColor,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 构建课程列表区域
+  Widget _buildCourseSection(
+    BuildContext context, 
+    bool isDark, 
+    List<ClassPeriod> periods, 
+    int todayWeekday,
+    int nowMinutes,
+    int passedCount,
+  ) {
+    final theme = Theme.of(context);
+    final courseProvider = context.watch<CourseProvider>();
+    final todayCourseCount = periods.where((period) {
+      final course = courseProvider.getEntry(todayWeekday, period.index);
+      return course != null && course.courseName.isNotEmpty;
+    }).length;
+    
+    // 计算当前/下一节课
+    ClassPeriod? nextPeriod;
+    for (final period in periods) {
+      final course = courseProvider.getEntry(todayWeekday, period.index);
+      final hasCourse = course != null && course.courseName.isNotEmpty;
+      if (!hasCourse) continue;
+      
+      final startMin = period.startHour * 60 + period.startMinute;
+      if (nowMinutes < startMin) {
+        nextPeriod = period;
+        break;
+      }
+    }
+    
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 120),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 课程标题
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 16, 4, 12),
+            child: Row(
+              children: [
+                Text(
+                  '今日课程',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppTheme.accentGreen.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    '有课 $todayCourseCount 节',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AppTheme.accentGreen,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          
+          // 课程列表（只显示有课的节次）
+          ...periods.where((period) {
+            final course = courseProvider.getEntry(todayWeekday, period.index);
+            return course != null && course.courseName.isNotEmpty;
+          }).map((period) {
+            final startMin = period.startHour * 60 + period.startMinute;
+            final endMin = period.endHour * 60 + period.endMinute;
+            final course = courseProvider.getEntry(todayWeekday, period.index)!;
+            
+            final isActive = nowMinutes >= startMin && nowMinutes < endMin;
+            final isPast = nowMinutes >= endMin;
+            final isNext = !isActive && !isPast && nextPeriod?.index == period.index;
+
+            return _buildPeriodTile(
+              context, isDark, period, isActive, isPast, isNext, nowMinutes, course,
+            );
+          }),
         ],
       ),
     );
