@@ -567,23 +567,16 @@ class WebService {
                 <span class="item-time">${course.startTime}-${course.endTime}</span>
               </div>
             </div>
-            <div class="item-expandable">
-              <div class="expand-note">${(course.note?.isNotEmpty ?? false) ? course.note : '暂无备注'}</div>
+            <div class="item-details">
+              <div class="expand-note">📝 ${(course.note?.isNotEmpty ?? false) ? course.note : '暂无备注'}</div>
               <div class="expand-location">📍 ${course.classroom.isEmpty ? '未指定教室' : course.classroom}</div>
-              ${isActive ? '''
-                <div class="expand-progress">
-                  <div class="progress-track"><div class="progress-fill" style="width:${progress}%"></div></div>
-                  <span class="progress-num">$progress%</span>
-                </div>
-                <div class="expand-remaining">⏱️ 剩余 ${_getRemainingTime(course.endTime)}</div>
-              ''' : ''}
             </div>
             ${isActive ? '''
-              <div class="item-progress-bar">
+              <div class="expand-progress">
                 <div class="progress-track"><div class="progress-fill" style="width:${progress}%"></div></div>
                 <span class="progress-num">$progress%</span>
               </div>
-              <div class="item-remaining">剩余 ${_getRemainingTime(course.endTime)}</div>
+              <div class="expand-remaining">⏱️ 剩余 ${_getRemainingTime(course.endTime)}</div>
             ''' : ''}
           </div>
         ''';
@@ -1120,13 +1113,11 @@ class WebService {
     .progress-num { font-size: 12px; font-weight: 600; min-width: 35px; text-align: right; }
     .item-remaining { font-size: 11px; opacity: 0.8; margin-top: 2px; }
 
-    /* ===== 今日课程展开详情（默认展开）===== */
-    .item-expandable {
-      max-height: 200px;
-      overflow: visible;
-      opacity: 1;
+    /* ===== 今日课程详情（始终显示）===== */
+    .item-details {
+      display: block;
       padding: 8px 0 4px;
-      transition: none;
+      opacity: 1;
     }
 
     .expand-note {
@@ -2088,13 +2079,8 @@ class WebService {
     }
 
     // ========================================
-    // 6. 今日课程项点击展开/收起详情
+    // 6. 今日课程项点击效果（详情已始终显示，无需折叠）
     // ========================================
-    document.querySelectorAll('.today-item').forEach(item => {
-      item.addEventListener('click', function(e) {
-        this.classList.toggle('expanded');
-      });
-    });
 
     // ========================================
     // 7. 待办事项点击划线效果
