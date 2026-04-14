@@ -13,23 +13,35 @@ const _widgetChannel = MethodChannel('com.lisijie.teacher_schedule/widget_data')
 /// 桌面小组件数据更新服务
 ///
 /// 参照 mikcb 方案：Flutter 写 JSON snapshot → Kotlin 解析 → RemoteViews 渲染
+/// 自动刷新：使用 Android WorkManager（每15分钟，低功耗）
 class WidgetService {
-  static Timer? _autoRefreshTimer;
   static DateTime? _lastUpdateTime;
 
   /// 初始化自动刷新机制
+  /// 通过 WorkManager 实现低功耗后台刷新（每15分钟）
   static void initAutoRefresh() {
-    _autoRefreshTimer?.cancel();
-    _autoRefreshTimer = Timer.periodic(const Duration(minutes: 30), (_) {
-      updateWidget();
-    });
-    print('[WidgetService] 自动刷新已启动（每30分钟）');
+    _startGlobalRefresh();
+    print('[WidgetService] 自动刷新已启动（WorkManager 每15分钟）');
   }
 
-  /// 停止自动刷新
-  static void stopAutoRefresh() {
-    _autoRefreshTimer?.cancel();
-    _autoRefreshTimer = null;
+  /// 启动全局刷新（WorkManager）
+  static Future<void> _startGlobalRefresh() async {
+    try {
+      await _widgetChannel.invokeMethod('startGlobalRefresh');
+      print('[WidgetService] WorkManager 全局刷新已启动');
+    } catch (e) {
+      print('[WidgetService] 启动全局刷新失败: $e');
+    }
+  }
+
+  /// 停止全局刷新
+  static Future<void> stopAutoRefresh() async {
+    try {
+      await _widgetChannel.invokeMethod('stopGlobalRefresh');
+      print('[WidgetService] WorkManager 全局刷新已停止');
+    } catch (e) {
+      print('[WidgetService] 停止全局刷新失败: $e');
+    }
   }
 
   /// 课程数据变化时调用（带防抖）

@@ -117,6 +117,17 @@ class MainActivity : FlutterActivity() {
                     android.util.Log.d("WidgetData", "触发小组件刷新: $widgetName")
                     result.success(true)
                 }
+                // ========== 全局刷新控制 ==========
+                "startGlobalRefresh" -> {
+                    GlobalRefreshManager.start(this)
+                    android.util.Log.d("WidgetData", "全局刷新已启动")
+                    result.success(true)
+                }
+                "stopGlobalRefresh" -> {
+                    GlobalRefreshManager.stop(this)
+                    android.util.Log.d("WidgetData", "全局刷新已停止")
+                    result.success(true)
+                }
                 // ========== 原生闹钟调度 ==========
                 "scheduleClassReminders" -> {
                     val coursesJson = call.argument<String>("coursesJson") ?: ""
@@ -197,7 +208,7 @@ class MainActivity : FlutterActivity() {
 
     override fun onResume() {
         super.onResume()
-        // 应用回到前台时，启动保活服务
-        LiveUpdateService.start(this)
+        // 应用回到前台时，启动全局刷新管理器
+        GlobalRefreshManager.start(this)
     }
 }

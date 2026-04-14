@@ -36,7 +36,7 @@ class LiveUpdateService : Service() {
         private const val TAG = "LiveUpdateService"
         private const val NOTIFICATION_ID = 1001
         private const val CHANNEL_ID = "course_live_update"
-        private const val UPDATE_INTERVAL = 60000L // 1分钟更新一次
+        private const val UPDATE_INTERVAL = 300000L // 5分钟更新一次通知（降低频率省电）
 
         private var instance: LiveUpdateService? = null
         fun getInstance(): LiveUpdateService? = instance
@@ -233,15 +233,13 @@ class LiveUpdateService : Service() {
 
     /**
      * 开始定时更新循环
+     * 注意：小组件刷新已移交给 WorkManager（GlobalRefreshWorker），此处只更新通知
      */
     private fun startUpdateLoop() {
         updateRunnable = Runnable {
             try {
                 // 刷新通知
                 updateNotification()
-
-                // 刷新小组件
-                refreshWidgets()
 
                 // 检查是否需要显示超级岛提醒
                 checkAndShowHyperIsland()

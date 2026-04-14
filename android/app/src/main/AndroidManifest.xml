@@ -197,6 +197,25 @@
             </intent-filter>
         </receiver>
 
+        <!-- 全局刷新定时器接收器 - AlarmManager 驱动 -->
+        <receiver
+            android:name=".GlobalRefreshReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.lisijie.teacher_schedule.GLOBAL_REFRESH"/>
+            </intent-filter>
+        </receiver>
+
+        <!-- 全局刷新开机自启 -->
+        <receiver
+            android:name="com.lisijie.teacher_schedule.GlobalRefreshBootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED"/>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED"/>
+            </intent-filter>
+        </receiver>
+
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
