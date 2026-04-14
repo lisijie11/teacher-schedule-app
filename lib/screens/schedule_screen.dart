@@ -21,6 +21,10 @@ class _ScheduleScreenState extends State<ScheduleScreen>
   // 周几标签
   static const List<String> _weekdayLabels = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
 
+  // 临时变量用于周数选择
+  int _tempWeekType = 0;
+  List<int>? _tempCustomWeeks;
+
   @override
   void initState() {
     super.initState();
@@ -374,6 +378,12 @@ class _ScheduleScreenState extends State<ScheduleScreen>
         TextEditingController(text: existing?.note ?? '');
     int selectedColor = existing?.colorIndex ?? 0;
     
+    // 初始化周数设置
+    _tempWeekType = existing?.weekTypeIndex ?? 0;
+    _tempCustomWeeks = existing?.customWeeks != null 
+        ? List<int>.from(existing!.customWeeks!) 
+        : null;
+    
     // 获取该天的所有节次
     final allPeriods = SchedulePresets.getPeriodsForWeekday(weekday);
     // 当前选中的节次（可切换）
@@ -579,6 +589,151 @@ class _ScheduleScreenState extends State<ScheduleScreen>
                 ),
                 const SizedBox(height: 12),
 
+                // 周数选择
+                Text(
+                  '上课周数',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: sheetDark ? Colors.white60 : Colors.black54,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                // 周数类型选择
+                StatefulBuilder(
+                  builder: (ctx, setWeekS) {
+                    int currentWeekType = existing?.weekTypeIndex ?? 0;
+                    List<int>? currentCustomWeeks = existing?.customWeeks;
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // 类型选项
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            _buildWeekTypeChip(ctx, '全学期', currentWeekType == 0, 
+                                () => setWeekS(() { currentWeekType = 0; }), 
+                                CourseEntry.palette[selectedColor], sheetDark),
+                            _buildWeekTypeChip(ctx, '单周', currentWeekType == 1,
+                                () => setWeekS(() { currentWeekType = 1; }),
+                                CourseEntry.palette[selectedColor], sheetDark),
+                            _buildWeekTypeChip(ctx, '双周', currentWeekType == 2,
+                                () => setWeekS(() { currentWeekType = 2; }),
+                                CourseEntry.palette[selectedColor], sheetDark),
+                            _buildWeekTypeChip(ctx, '自定义', currentWeekType == 3,
+                                () => setWeekS(() {
+                                  currentWeekType = 3;
+                                  if (currentCustomWeeks == null) {
+                                    currentCustomWeeks = [];
+                                  }
+                                }),
+                                CourseEntry.palette[selectedColor], sheetDark),
+                          ],
+                        ),
+                        // 自定义周数选择
+                        if (currentWeekType == 3) ...[
+                          const SizedBox(height: 12),
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: sheetDark ? AppTheme.darkBg3 : AppTheme.lightBg1,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: sheetDark ? AppTheme.darkBorder : AppTheme.lightBorder,
+                              ),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(
+                                      '选择周数',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: sheetDark ? Colors.white60 : Colors.black54,
+                                      ),
+                                    ),
+                                    TextButton(
+                                      onPressed: () {
+                                        // 默认选择所有周
+                                        setWeekS(() {
+                                          currentCustomWeeks = List<int>.generate(20, (i) => i + 1);
+                                        });
+                                      },
+                                      child: Text(
+                                        '全选',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: CourseEntry.palette[selectedColor],
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                Wrap(
+                                  spacing: 6,
+                                  runSpacing: 6,
+                                  children: List.generate(20, (i) {
+                                    int week = i + 1;
+                                    bool selected = currentCustomWeeks?.contains(week) ?? false;
+                                    return GestureDetector(
+                                      onTap: () {
+                                        setWeekS(() {
+                                          currentCustomWeeks ??= [];
+                                          if (selected) {
+                                            currentCustomWeeks!.remove(week);
+                                          } else {
+                                            currentCustomWeeks!.add(week);
+                                            currentCustomWeeks!.sort();
+                                          }
+                                        });
+                                      },
+                                      child: Container(
+                                        width: 40,
+                                        height: 32,
+                                        decoration: BoxDecoration(
+                                          color: selected 
+                                              ? CourseEntry.palette[selectedColor].withOpacity(0.2)
+                                              : Colors.transparent,
+                                          borderRadius: BorderRadius.circular(6),
+                                          border: Border.all(
+                                            color: selected 
+                                                ? CourseEntry.palette[selectedColor]
+                                                : (sheetDark ? AppTheme.darkBorder : AppTheme.lightBorder),
+                                          ),
+                                        ),
+                                        child: Center(
+                                          child: Text(
+                                            '$week',
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w600,
+                                              color: selected 
+                                                  ? CourseEntry.palette[selectedColor]
+                                                  : (sheetDark ? Colors.white54 : Colors.black54),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  }),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ],
+                    );
+                  },
+                ),
+
+                const SizedBox(height: 12),
+
                 // 备注（可选）
                 TextField(
                   controller: noteCtrl,
@@ -628,6 +783,10 @@ class _ScheduleScreenState extends State<ScheduleScreen>
                         );
                         return;
                       }
+                      // 获取周数设置（从外部的 _tempWeekType 和 _tempCustomWeeks 获取）
+                      final weekTypeToSave = _tempWeekType;
+                      final customWeeksToSave = weekTypeToSave == 3 ? _tempCustomWeeks : null;
+                      
                       final entry = CourseEntry(
                         id: existing?.id ??
                             '${weekday}_${selectedPeriod.index}',
@@ -639,6 +798,8 @@ class _ScheduleScreenState extends State<ScheduleScreen>
                             ? null
                             : noteCtrl.text.trim(),
                         colorIndex: selectedColor,
+                        weekTypeIndex: weekTypeToSave,
+                        customWeeks: customWeeksToSave,
                       );
                       courseProvider.save(entry);
                       Navigator.pop(ctx);
@@ -999,6 +1160,8 @@ class _ScheduleScreenState extends State<ScheduleScreen>
             SizedBox(height: 8),
             Text('🎨 选择颜色标记不同课程'),
             SizedBox(height: 8),
+            Text('📅 设置上课周数（单周/双周/自定义）'),
+            SizedBox(height: 8),
             Text('🗑️ 已填写的课程可在编辑窗口删除'),
             SizedBox(height: 8),
             Text('💾 数据本地保存，重启不丢失'),
@@ -1010,6 +1173,45 @@ class _ScheduleScreenState extends State<ScheduleScreen>
             child: const Text('明白了'),
           ),
         ],
+      ),
+    );
+  }
+
+  // 周数类型选择按钮
+  Widget _buildWeekTypeChip(
+    BuildContext ctx,
+    String label,
+    bool selected,
+    VoidCallback onTap,
+    Color accentColor,
+    bool isDark,
+  ) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected
+              ? accentColor.withOpacity(0.15)
+              : (isDark ? AppTheme.darkBg3 : AppTheme.lightBg1),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: selected
+                ? accentColor
+                : (isDark ? AppTheme.darkBorder : AppTheme.lightBorder),
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: selected
+                ? accentColor
+                : (isDark ? Colors.white60 : Colors.black54),
+          ),
+        ),
       ),
     );
   }

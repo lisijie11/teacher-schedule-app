@@ -3,6 +3,14 @@ import 'package:hive/hive.dart';
 import 'schedule_model.dart' show SchedulePresets, ClassPeriod;
 import '../services/widget_service.dart';
 
+/// 周数类型枚举
+enum WeekType {
+  all,   // 全学期
+  odd,   // 单周
+  even,  // 双周
+  custom // 自定义周数
+}
+
 /// 课程条目 —— 对应某节次在某天的课程信息
 /// 用户可以手动为每个节次填写课程名称、地点、备注
 @HiveType(typeId: 2)
@@ -28,6 +36,12 @@ class CourseEntry extends HiveObject {
   @HiveField(6)
   int colorIndex; // 颜色标记（0-7）
 
+  @HiveField(7)
+  int weekTypeIndex; // 周数类型（0=全学期，1=单周，2=双周，3=自定义）
+
+  @HiveField(8)
+  List<int>? customWeeks; // 自定义周数列表，如 [1,3,5] 或 [1,2,3,4,5,6,7,8]
+
   CourseEntry({
     required this.id,
     required this.weekday,
@@ -36,7 +50,57 @@ class CourseEntry extends HiveObject {
     required this.classroom,
     this.note,
     this.colorIndex = 0,
+    this.weekTypeIndex = 0, // 默认全学期
+    this.customWeeks,
   });
+
+  /// 获取周数类型
+  WeekType get weekType => WeekType.values[weekTypeIndex];
+
+  /// 获取周数描述
+  String get weekTypeDesc {
+    switch (weekType) {
+      case WeekType.all:
+        return '全学期';
+      case WeekType.odd:
+        return '单周';
+      case WeekType.even:
+        return '双周';
+      case WeekType.custom:
+        if (customWeeks == null || customWeeks!.isEmpty) return '全学期';
+        if (customWeeks!.length <= 3) {
+          return '第${customWeeks!.join('、')}周';
+        } else {
+          final sorted = List<int>.from(customWeeks!)..sort();
+          // 检查是否连续
+          bool isConsecutive = true;
+          for (int i = 1; i < sorted.length; i++) {
+            if (sorted[i] != sorted[i - 1] + 1) {
+              isConsecutive = false;
+              break;
+            }
+          }
+          if (isConsecutive) {
+            return '第${sorted.first}-${sorted.last}周';
+          }
+          return '${sorted.length}周';
+        }
+    }
+  }
+
+  /// 检查指定周数是否有课
+  bool hasClassInWeek(int weekNumber) {
+    switch (weekType) {
+      case WeekType.all:
+        return true;
+      case WeekType.odd:
+        return weekNumber % 2 == 1;
+      case WeekType.even:
+        return weekNumber % 2 == 0;
+      case WeekType.custom:
+        return customWeeks?.contains(weekNumber) ?? true;
+    }
+  }
 
   /// 8种配色供用户选择
   static const List<Color> palette = [
@@ -112,6 +176,8 @@ class CourseEntryAdapter extends TypeAdapter<CourseEntry> {
       classroom: fields[4] as String? ?? '',
       note: fields[5] as String?,
       colorIndex: fields[6] as int? ?? 0,
+      weekTypeIndex: fields[7] as int? ?? 0,
+      customWeeks: fields[8] != null ? (fields[8] as List).cast<int>() : null,
     );
   }
 
@@ -125,6 +191,8 @@ class CourseEntryAdapter extends TypeAdapter<CourseEntry> {
       4: obj.classroom,
       5: obj.note,
       6: obj.colorIndex,
+      7: obj.weekTypeIndex,
+      8: obj.customWeeks,
     });
   }
 }
