@@ -15,6 +15,7 @@ import 'services/location_service.dart';
 import 'services/weather_service.dart';
 import 'screens/home_screen.dart';
 import 'screens/todo_screen.dart';
+import 'screens/onboarding_screen.dart';
 import 'theme.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
@@ -79,6 +80,10 @@ void main() async {
   // 设置小组件通信回调
   _setupWidgetChannel();
 
+  // 检查是否首次启动
+  final settings = Hive.box('settings');
+  final isFirstLaunch = settings.get('firstLaunchDone', defaultValue: false) != true;
+
   runApp(
     MultiProvider(
       providers: [
@@ -87,7 +92,7 @@ void main() async {
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
         ChangeNotifierProvider(create: (_) => CourseProvider()),
       ],
-      child: const TeacherScheduleApp(),
+      child: TeacherScheduleApp(isFirstLaunch: isFirstLaunch),
     ),
   );
 }
@@ -187,7 +192,9 @@ int _parseTimeToMinutes(String time) {
 }
 
 class TeacherScheduleApp extends StatefulWidget {
-  const TeacherScheduleApp({super.key});
+  final bool isFirstLaunch;
+
+  const TeacherScheduleApp({super.key, this.isFirstLaunch = false});
 
   @override
   State<TeacherScheduleApp> createState() => _TeacherScheduleAppState();
@@ -196,15 +203,19 @@ class TeacherScheduleApp extends StatefulWidget {
 class _TeacherScheduleAppState extends State<TeacherScheduleApp> with WidgetsBindingObserver {
   // 全局路由通知器，通知 HomeScreen 切换 Tab
   final _routeNotifier = ValueNotifier<int>(0);
+  bool _showOnboarding = false;
 
   @override
   void initState() {
     super.initState();
+    _showOnboarding = widget.isFirstLaunch;
     WidgetsBinding.instance.addObserver(this);
     // 延迟一帧后检查（确保 HomeScreen 已创建并注册 PageController）
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _checkWidgetRoute();
-      _autoUpdateLocation();
+      if (!_showOnboarding) {
+        _checkWidgetRoute();
+        _autoUpdateLocation();
+      }
     });
   }
 
@@ -314,10 +325,47 @@ class _TeacherScheduleAppState extends State<TeacherScheduleApp> with WidgetsBin
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
       themeMode: themeProvider.themeMode,
-      home: HomeScreen(
-        initialIndex: 0,
-        routeNotifier: _routeNotifier,
+      home: _showOnboarding
+          ? _OnboardingWrapper(
+              onComplete: () {
+                setState(() {
+                  _showOnboarding = false;
+                });
+                // 引导完成后执行初始化
+                _checkWidgetRoute();
+                _autoUpdateLocation();
+              },
+            )
+          : HomeScreen(
+              initialIndex: 0,
+              routeNotifier: _routeNotifier,
+            ),
+    );
+  }
+}
+
+/// 引导页面包装器
+class _OnboardingWrapper extends StatelessWidget {
+  final VoidCallback onComplete;
+
+  const _OnboardingWrapper({required this.onComplete});
+
+  @override
+  Widget build(BuildContext context) {
+    return Navigator(
+      onGenerateRoute: (_) => MaterialPageRoute(
+        builder: (_) => OnboardingScreen(
+          key: const ValueKey('onboarding'),
+        ),
+        settings: const RouteSettings(name: 'onboarding'),
       ),
+      onPopPage: (route, result) {
+        if (!route.didPop(null)) {
+          return false;
+        }
+        onComplete();
+        return true;
+      },
     );
   }
 }

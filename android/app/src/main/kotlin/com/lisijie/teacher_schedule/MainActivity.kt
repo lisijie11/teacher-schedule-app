@@ -100,6 +100,12 @@ class MainActivity : FlutterActivity() {
                     val prefs = getSharedPreferences("HomeWidgetPlugin", android.content.Context.MODE_PRIVATE)
                     prefs.edit().putString(key, value).apply()
                     android.util.Log.d("WidgetData", "写入 HomeWidgetPlugin: $key = $value")
+                    
+                    // 数据写入后立即刷新小部件和通知
+                    if (key == "snapshot_json") {
+                        WidgetSupport.updateAll(this)
+                        LiveUpdateService.getInstance()?.updateNotification()
+                    }
                     result.success(true)
                 }
                 "saveWidgetInt" -> {

@@ -36,7 +36,7 @@ class LiveUpdateService : Service() {
         private const val TAG = "LiveUpdateService"
         private const val NOTIFICATION_ID = 1001
         private const val CHANNEL_ID = "course_live_update"
-        private const val UPDATE_INTERVAL = 300000L // 5分钟更新一次通知（降低频率省电）
+        private const val UPDATE_INTERVAL = 60000L // 1分钟更新一次通知（保持进度同步）
 
         private var instance: LiveUpdateService? = null
         fun getInstance(): LiveUpdateService? = instance
@@ -153,12 +153,35 @@ class LiveUpdateService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        // 获取当前课程信息
+        // 获取当前课程信息（从 snapshot_json 读取，与小部件保持一致）
         val prefs = getSharedPreferences("HomeWidgetPlugin", Context.MODE_PRIVATE)
-        val courseName = prefs.getString("course_name", null)
-        val courseLocation = prefs.getString("location", null)
-        val progress = prefs.getInt("progress", 0)
-        val timeRange = prefs.getString("time_range", "")
+        val snapshotJson = prefs.getString("snapshot_json", null)
+
+        var courseName: String? = null
+        var courseLocation: String? = null
+        var progress = 0
+        var timeRange = ""
+
+        if (snapshotJson != null) {
+            try {
+                val snapshot = JSONObject(snapshotJson)
+                val highlightCourse = snapshot.optJSONObject("highlightCourse")
+                if (highlightCourse != null) {
+                    courseName = highlightCourse.optString("name", null)
+                    if (courseName.isNullOrEmpty()) courseName = null
+                    courseLocation = highlightCourse.optString("location", null)
+                    if (courseLocation.isNullOrEmpty()) courseLocation = null
+                    progress = highlightCourse.optInt("progress", 0)
+                    val startTime = highlightCourse.optString("startTime", "")
+                    val endTime = highlightCourse.optString("endTime", "")
+                    if (startTime.isNotEmpty() && endTime.isNotEmpty()) {
+                        timeRange = "$startTime - $endTime"
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "解析 snapshot_json 失败", e)
+            }
+        }
 
         // 读取下一节课信息
         val nextCourseName = prefs.getString("course_2_name", null)

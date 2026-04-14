@@ -1,0 +1,9 @@
+
+Running Gradle task 'assembleRelease'...                        
+You are applying Flutter's app_plugin_loader Gradle plugin imperatively using the apply script method, which is deprecated and will be removed in a future release. Migrate to applying Gradle plugins with the declarative plugins block: https://flutter.dev/to/flutter-gradle-plugin-apply
+
+You are applying Flutter's main Gradle plugin imperatively using the apply script method, which is deprecated and will be removed in a future release. Migrate to applying Gradle plugins with the declarative plugins block: https://flutter.dev/to/flutter-gradle-plugin-apply
+
+Font asset "MaterialIcons-Regular.otf" was tree-shaken, reducing it from 1645184 to 13888 bytes (99.2% reduction). Tree-shaking can be disabled by providing the --no-tree-shake-icons flag when building your app.
+Running Gradle task 'assembleRelease'...                           52.2s
+✓ Built build/app/outputs/flutter-apk/app-release.apk (26.5MB)
