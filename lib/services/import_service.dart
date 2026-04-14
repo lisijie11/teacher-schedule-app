@@ -7,6 +7,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../models/course_model.dart';
 import '../models/schedule_model.dart';
+import '../models/todo_model.dart';
 
 /// 课表导入导出服务
 /// 支持：
@@ -32,7 +33,7 @@ class ImportService {
     }
   }
 
-  /// 导出完整备份并通过系统分享（包含课程、作息、提醒、设置）
+  /// 导出完整备份并通过系统分享（包含课程、作息、提醒、设置、待办、头像）
   static Future<bool> exportAndShare(CourseProvider courseProvider) async {
     try {
       final courses = courseProvider.all;
@@ -41,10 +42,24 @@ class ImportService {
         return false;
       }
 
+      // 获取备份目录
+      final backupDir = await getBackupDirectory();
+      
+      // 复制头像文件（如果有）
+      String? avatarBase64;
+      final avatarPath = _getSettings('userAvatarPath') as String?;
+      if (avatarPath != null && avatarPath.isNotEmpty) {
+        final avatarFile = File(avatarPath);
+        if (await avatarFile.exists()) {
+          final bytes = await avatarFile.readAsBytes();
+          avatarBase64 = base64Encode(bytes);
+        }
+      }
+
       // 构建完整的导出数据
       final exportData = {
         'app': 'teacher_schedule_backup',
-        'version': '2.0',  // 升级版本号
+        'version': '3.0',  // 升级版本号，支持待办和头像
         'exportTime': DateTime.now().toIso8601String(),
         // 课程数据
         'courses': courses.map((c) => {
@@ -92,15 +107,19 @@ class ImportService {
           'semesterStartDate': _getSettings('semesterStartDate'),
           'totalWeeks': _getSettings('totalWeeks'),
           'userName': _getSettings('userName'),
+          'userLocation': _getSettings('userLocation'),
         },
+        // 待办事项数据
+        'todos': _exportTodos(),
+        // 头像数据（Base64 编码）
+        'avatar': avatarBase64,
       };
 
       final jsonString = const JsonEncoder.withIndent('  ').convert(exportData);
 
-      // 保存到临时目录
-      final directory = await getTemporaryDirectory();
+      // 保存到备份目录
       final fileName = '教师课表完整备份_${_formatDateTime()}.json';
-      final file = File('${directory.path}/$fileName');
+      final file = File('${backupDir.path}/$fileName');
       await file.writeAsString(jsonString);
 
       debugPrint('完整备份已导出到: ${file.path}');
@@ -109,13 +128,45 @@ class ImportService {
       await Share.shareXFiles(
         [XFile(file.path)],
         subject: '教师课表助手 - 完整备份',
-        text: '包含课程、作息时间、自定义提醒等全部数据',
+        text: '包含课程、作息时间、自定义提醒、待办事项、头像等全部数据',
       );
+
+      // 清理临时文件
+      await backupDir.delete(recursive: true);
 
       return true;
     } catch (e) {
       debugPrint('导出分享失败: $e');
       return false;
+    }
+  }
+
+  /// 获取备份目录（临时目录，避免占用用户空间）
+  static Future<Directory> getBackupDirectory() async {
+    final tempDir = await getTemporaryDirectory();
+    final backupDir = Directory('${tempDir.path}/teacher_schedule_backup');
+    if (await backupDir.exists()) {
+      await backupDir.delete(recursive: true);
+    }
+    await backupDir.create(recursive: true);
+    return backupDir;
+  }
+
+  /// 导出待办事项
+  static List<Map<String, dynamic>> _exportTodos() {
+    try {
+      final todoBox = Hive.box<TodoItem>('todos');
+      return todoBox.values.map((t) => {
+        'id': t.id,
+        'title': t.title,
+        'isDone': t.isDone,
+        'createdAt': t.createdAt.millisecondsSinceEpoch,
+        'note': t.note,
+        'priority': t.priority,
+      }).toList();
+    } catch (e) {
+      debugPrint('导出待办事项失败: $e');
+      return [];
     }
   }
 
@@ -337,9 +388,58 @@ class ImportService {
         if (settings['userName'] != null) {
           await settingsBox.put('userName', settings['userName']);
         }
+        if (settings['userLocation'] != null) {
+          await settingsBox.put('userLocation', settings['userLocation']);
+        }
         debugPrint('设置已导入');
       } catch (e) {
         debugPrint('导入设置失败: $e');
+      }
+    }
+    
+    // 导入待办事项数据（v3.0 及以上）
+    final todos = data['todos'] as List<dynamic>?;
+    if (todos != null && todos.isNotEmpty) {
+      try {
+        final todoBox = Hive.box<TodoItem>('todos');
+        // 清空现有待办（避免冲突）
+        await todoBox.clear();
+        for (final t in todos) {
+          final todo = TodoItem(
+            id: t['id'] as String,
+            title: t['title'] as String,
+            isDone: t['isDone'] as bool? ?? false,
+            createdAt: DateTime.fromMillisecondsSinceEpoch(t['createdAt'] as int),
+            note: t['note'] as String?,
+            priority: t['priority'] as int? ?? 0,
+          );
+          await todoBox.put(todo.id, todo);
+        }
+        debugPrint('待办事项已导入 ${todos.length} 条');
+      } catch (e) {
+        debugPrint('导入待办事项失败: $e');
+      }
+    }
+    
+    // 导入头像数据（v3.0 及以上）
+    final avatarBase64 = data['avatar'] as String?;
+    if (avatarBase64 != null && avatarBase64.isNotEmpty) {
+      try {
+        final bytes = base64Decode(avatarBase64);
+        final appDir = await getApplicationDocumentsDirectory();
+        final avatarDir = Directory('${appDir.path}/avatar');
+        if (!await avatarDir.exists()) {
+          await avatarDir.create(recursive: true);
+        }
+        final avatarFile = File('${avatarDir.path}/avatar.png');
+        await avatarFile.writeAsBytes(bytes);
+        
+        // 更新设置中的头像路径
+        final settingsBox = Hive.box('settings');
+        await settingsBox.put('userAvatarPath', avatarFile.path);
+        debugPrint('头像已导入');
+      } catch (e) {
+        debugPrint('导入头像失败: $e');
       }
     }
 
