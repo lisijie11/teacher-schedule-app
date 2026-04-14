@@ -786,16 +786,6 @@ class WebService {
       margin-right: 12px;
     }
 
-    /* 时间冒号闪烁 */
-    .time-colon {
-      animation: colonBlink 1s step-end infinite;
-    }
-
-    @keyframes colonBlink {
-      0%, 49% { opacity: 1; }
-      50%, 100% { opacity: 0.3; }
-    }
-
     .topbar-center {
       flex: 1;
       text-align: center;
@@ -1130,21 +1120,13 @@ class WebService {
     .progress-num { font-size: 12px; font-weight: 600; min-width: 35px; text-align: right; }
     .item-remaining { font-size: 11px; opacity: 0.8; margin-top: 2px; }
 
-    /* ===== 今日课程展开详情 ===== */
+    /* ===== 今日课程展开详情（默认展开）===== */
     .item-expandable {
-      max-height: 0;
-      overflow: hidden;
-      transition: max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1),
-                  opacity 0.25s ease,
-                  padding 0.35s ease;
-      opacity: 0;
-      padding: 0;
-    }
-
-    .today-item.expanded .item-expandable {
       max-height: 200px;
+      overflow: visible;
       opacity: 1;
       padding: 8px 0 4px;
+      transition: none;
     }
 
     .expand-note {
@@ -1868,7 +1850,7 @@ class WebService {
         <div class="topbar-status">$statusIcon ${currentStatus}${nextCourseName.isNotEmpty ? ' $nextCourseName' : ''}</div>
       </div>
       <div class="topbar-right">
-        <span class="topbar-time" id="liveTime">--:<span class="time-colon">:</span>--</span>
+        <span class="topbar-time" id="liveTime">--:--</span>
         <button class="theme-toggle" id="themeBtn" onclick="toggleTheme()" ontouchend="toggleTheme();event.preventDefault();" title="切换主题">🌓</button>
       </div>
     </div>
@@ -2039,16 +2021,15 @@ class WebService {
     }
 
     // ========================================
-    // 3. 实时时钟（带冒号闪烁）
+    // 3. 实时时钟（简洁版）
     // ========================================
     function updateTime() {
       const now = new Date();
       const hours = String(now.getHours()).padStart(2, '0');
       const minutes = String(now.getMinutes()).padStart(2, '0');
-      const seconds = String(now.getSeconds()).padStart(2, '0');
       const timeEl = document.getElementById('liveTime');
       if (timeEl) {
-        timeEl.innerHTML = hours + ':<span class="time-colon">:</span>' + minutes;
+        timeEl.textContent = hours + ':' + minutes;
       }
     }
     updateTime();
