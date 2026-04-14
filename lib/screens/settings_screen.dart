@@ -5,6 +5,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:io';
 import '../theme.dart';
 import '../models/schedule_model.dart';
@@ -38,6 +39,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late int _totalWeeks; // 学期总周数（默认20周）
   bool _isKeepAliveRunning = false;
   bool _isAccessibilityEnabled = false;
+  String _appVersion = '2.6.1'; // 应用版本号（main.dart 初始化时同步）
 
   static const List<String> _weekdayLabels = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
 
@@ -46,6 +48,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.initState();
     _loadSettings();
     _checkKeepAliveStatus();
+    _loadAppVersion();
+  }
+
+  /// 从 SharedPreferences 加载应用版本号（main.dart 初始化时写入）
+  Future<void> _loadAppVersion() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (mounted) {
+        setState(() {
+          _appVersion = prefs.getString('app_version') ?? '2.6.1';
+        });
+      }
+    } catch (e) {
+      // 失败时使用默认值
+    }
   }
 
   Future<void> _checkKeepAliveStatus() async {
@@ -401,7 +418,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 theme: theme,
                 icon: Icons.info_outline_rounded,
                 title: '版本',
-                subtitle: '2.3.5',
+                subtitle: _appVersion,
               ),
               _buildDivider(isDark),
               _buildInfoTile(

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/data/latest.dart' as tz;
 
 import 'models/schedule_model.dart';
@@ -24,8 +25,15 @@ const MethodChannel _widgetChannel = MethodChannel('com.lisijie.teacher_schedule
 // 小组件路由 Channel
 const MethodChannel _routeChannel = MethodChannel('com.lisijie.teacher_schedule/widget_route');
 
+// 应用版本号（与 pubspec.yaml 和 build.gradle 保持一致）
+const String appVersion = '2.6.1';
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // 初始化 SharedPreferences（存储应用版本号）
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.setString('app_version', appVersion);
 
   // 初始化时区
   tz.initializeTimeZones();
