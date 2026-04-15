@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- 
     通知折叠状态布局
-    参考 mikcb 简洁设计
+    支持深色模式自动切换
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
@@ -33,7 +33,7 @@
             android:layout_height="wrap_content"
             android:text="高等数学"
             android:textSize="14sp"
-            android:textColor="#1E293B"
+            android:textColor="@color/notification_text_primary"
             android:textStyle="bold"
             android:maxLines="1"/>
 
@@ -43,7 +43,7 @@
             android:layout_height="wrap_content"
             android:text="A301 · 剩余25分钟"
             android:textSize="12sp"
-            android:textColor="#64748B"
+            android:textColor="@color/notification_text_secondary"
             android:layout_marginTop="2dp"/>
     </LinearLayout>
 
@@ -54,7 +54,7 @@
         android:layout_height="wrap_content"
         android:text="65%"
         android:textSize="14sp"
-        android:textColor="#1D9BF0"
+        android:textColor="@color/notification_accent"
         android:textStyle="bold"/>
 
 </LinearLayout>

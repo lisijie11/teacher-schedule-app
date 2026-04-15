@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 夜间模式颜色 -->
+    <color name="notification_text_primary">#F1F5F9</color>
+    <color name="notification_text_secondary">#94A3B8</color>
+    <color name="notification_text_tertiary">#64748B</color>
+    <color name="notification_accent">#38BDF8</color>
+    <color name="notification_divider">#334155</color>
+    <color name="notification_background">#1E293B</color>
+</resources>
