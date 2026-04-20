@@ -256,9 +256,14 @@ class LiveUpdateService : Service() {
 
     /**
      * 开始定时更新循环
-     * 注意：小组件刷新已移交给 WorkManager（GlobalRefreshWorker），此处只更新通知
+     * 双重保障：
+     * 1. 每分钟更新通知
+     * 2. 每5分钟重新生成 snapshot 数据并刷新小部件（确保长时间不打开 APP 时小部件仍有数据）
      */
     private fun startUpdateLoop() {
+        var widgetRefreshCounter = 0
+        val WIDGET_REFRESH_INTERVAL = 5 // 每5次循环（约5分钟）刷新一次小部件
+
         updateRunnable = Runnable {
             try {
                 // 刷新通知
@@ -267,6 +272,13 @@ class LiveUpdateService : Service() {
                 // 检查是否需要显示超级岛提醒
                 checkAndShowHyperIsland()
 
+                // 定期刷新小组件数据（关键修复：解决长时间不操作后小部件不更新的问题）
+                widgetRefreshCounter++
+                if (widgetRefreshCounter >= WIDGET_REFRESH_INTERVAL) {
+                    widgetRefreshCounter = 0
+                    refreshWidgetsWithSnapshot()
+                    Log.d(TAG, "定时刷新：已重新生成 snapshot 并刷新小组件")
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "更新失败", e)
             }
@@ -308,6 +320,268 @@ class LiveUpdateService : Service() {
         } catch (e: Exception) {
             Log.e(TAG, "刷新小组件失败", e)
         }
+    }
+
+    /**
+     * 刷新小组件（带 snapshot 数据重新生成）
+     * 
+     * 关键修复：当 Flutter 进程不运行时，LiveUpdateService 作为前台服务仍然存活，
+     * 可以从 ScheduleData SharedPreferences 重新计算 snapshot 并写入，
+     * 确保4x4等大号小部件在长时间不打开APP的情况下也能显示课程内容。
+     */
+    private fun refreshWidgetsWithSnapshot() {
+        try {
+            // 1. 从 ScheduleData 读取课程数据并生成 snapshot
+            val snapshotJson = generateSnapshotFromScheduleData(this)
+            
+            // 2. 写入 HomeWidgetPlugin SharedPreferences
+            if (snapshotJson.isNotEmpty()) {
+                val prefs = getSharedPreferences("HomeWidgetPlugin", Context.MODE_PRIVATE)
+                prefs.edit().putString("snapshot_json", snapshotJson).apply()
+                Log.d(TAG, "已重新生成 snapshot_json (${snapshotJson.length} 字符)")
+            }
+            
+            // 3. 触发所有小组件刷新
+            WidgetSupport.updateAll(this)
+        } catch (e: Exception) {
+            Log.e(TAG, "刷新小组件(带数据)失败", e)
+        }
+    }
+
+    /**
+     * 从 ScheduleData SharedPreferences 生成完整的 snapshot JSON
+     * 与 GlobalRefreshReceiver.generateSnapshotJson() 保持一致的逻辑
+     */
+    private fun generateSnapshotFromScheduleData(context: Context): String {
+        return try {
+            val now = java.util.Calendar.getInstance()
+            val todayWeekday = now.get(java.util.Calendar.DAY_OF_WEEK)
+            val currentMinutes = now.get(java.util.Calendar.HOUR_OF_DAY) * 60 + now.get(java.util.Calendar.MINUTE)
+
+            // 转换星期
+            val weekday = if (todayWeekday == java.util.Calendar.SUNDAY) 7 else todayWeekday - 1
+
+            // 日期文字
+            val weekdays = arrayOf("", "周一", "周二", "周三", "周四", "周五", "周六", "周日")
+            val dateText = "${now.get(java.util.Calendar.MONTH) + 1}月${now.get(java.util.Calendar.DAY_OF_MONTH)}日 ${weekdays[weekday]}"
+
+            // 读取课程数据
+            val schedulePrefs = context.getSharedPreferences("ScheduleData", Context.MODE_PRIVATE)
+            val coursesJson = schedulePrefs.getString("courses_json", null)
+
+            // 默认作息表
+            val defaultPeriods = getDefaultPeriodsForRefresh(weekday)
+            val courses = mutableListOf<org.json.JSONObject>()
+            val periods = org.json.JSONArray()
+
+            for (i in 0 until defaultPeriods.length()) {
+                periods.put(defaultPeriods.getJSONObject(i))
+            }
+
+            if (coursesJson != null) {
+                try {
+                    val json = org.json.JSONObject(coursesJson)
+                    val periodsArray = json.optJSONArray("periods")
+                    val coursesArray = json.optJSONArray("courses")
+
+                    if (periodsArray != null) {
+                        for (i in 0 until periodsArray.length()) {
+                            periods.put(periodsArray.getJSONObject(i))
+                        }
+                    }
+                    if (coursesArray != null) {
+                        for (i in 0 until coursesArray.length()) {
+                            courses.add(coursesArray.getJSONObject(i))
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "解析课程数据失败", e)
+                }
+            }
+
+            // 查找当前和下一节课程
+            var currentPeriod: org.json.JSONObject? = null
+            var currentCourse: org.json.JSONObject? = null
+            var nextPeriod: org.json.JSONObject? = null
+            var nextCourse: org.json.JSONObject? = null
+
+            for (i in 0 until periods.length()) {
+                val period = periods.getJSONObject(i)
+                val startHour = period.optInt("sh", 8)
+                val startMinute = period.optInt("sm", 0)
+                val endHour = period.optInt("eh", 9)
+                val endMinute = period.optInt("em", 40)
+                val startMin = startHour * 60 + startMinute
+                val endMin = endHour * 60 + endMinute
+
+                if (currentPeriod == null && currentMinutes >= startMin && currentMinutes < endMin) {
+                    val course = findCourseForRefresh(courses, weekday, period.optInt("index", i + 1))
+                    if (course != null && course.optString("courseName", "").isNotEmpty()) {
+                        currentPeriod = period
+                        currentCourse = course
+                    }
+                }
+
+                if (nextPeriod == null && currentPeriod == null && currentMinutes < startMin) {
+                    val course = findCourseForRefresh(courses, weekday, period.optInt("index", i + 1))
+                    if (course != null && course.optString("courseName", "").isNotEmpty()) {
+                        nextPeriod = period
+                        nextCourse = course
+                    }
+                }
+            }
+
+            // 构建 allCourses
+            val allCoursesJson = org.json.JSONArray()
+            for (i in 0 until periods.length()) {
+                val period = periods.getJSONObject(i)
+                val startMin = period.optInt("sh", 8) * 60 + period.optInt("sm", 0)
+                val endMin = period.optInt("eh", 9) * 60 + period.optInt("em", 40)
+                val isPast = currentMinutes >= endMin
+                val isActive = currentPeriod != null && currentPeriod.optInt("index") == period.optInt("index")
+                val isUpcoming = nextPeriod != null && nextPeriod.optInt("index") == period.optInt("index")
+
+                val status = when {
+                    isPast -> "completed"
+                    isActive -> "ongoing"
+                    isUpcoming -> "upcoming"
+                    else -> ""
+                }
+
+                val course = findCourseForRefresh(courses, weekday, period.optInt("index", i + 1))
+                val name = if (course != null) course.optString("courseName", "") else period.optString("name", "")
+                val loc = if (course != null) course.optString("classroom", "") else ""
+
+                allCoursesJson.put(org.json.JSONObject().apply {
+                    put("id", "p${period.optInt("index", i + 1)}")
+                    put("name", name)
+                    put("location", loc)
+                    put("startTime", period.optString("startTime", ""))
+                    put("endTime", period.optString("endTime", ""))
+                    put("status", status)
+                })
+            }
+
+            // 状态和 highlightCourse
+            var state = "no_course"
+            var highlightCourseJson: org.json.JSONObject? = null
+
+            if (currentPeriod != null && currentCourse != null) {
+                state = "ongoing"
+                val startMin = currentPeriod.optInt("sh", 8) * 60 + currentPeriod.optInt("sm", 0)
+                val endMin = currentPeriod.optInt("eh", 9) * 60 + currentPeriod.optInt("em", 40)
+                val elapsed = currentMinutes - startMin
+                val total = endMin - startMin
+                val progress = if (total > 0) (elapsed * 100) / total else 0
+
+                highlightCourseJson = org.json.JSONObject().apply {
+                    put("id", "p${currentPeriod.optInt("index")}")
+                    put("name", currentCourse.optString("courseName", ""))
+                    put("location", currentCourse.optString("classroom", ""))
+                    put("startTime", currentPeriod.optString("startTime", ""))
+                    put("endTime", currentPeriod.optString("endTime", ""))
+                    put("status", "ongoing")
+                    put("progress", progress)
+                    put("section", currentPeriod.optString("name", ""))
+                }
+            } else if (nextPeriod != null && nextCourse != null) {
+                state = "upcoming"
+                highlightCourseJson = org.json.JSONObject().apply {
+                    put("id", "p${nextPeriod.optInt("index")}")
+                    put("name", nextCourse.optString("courseName", ""))
+                    put("location", nextCourse.optString("classroom", ""))
+                    put("startTime", nextPeriod.optString("startTime", ""))
+                    put("endTime", nextPeriod.optString("endTime", ""))
+                    put("status", "upcoming")
+                    put("progress", 0)
+                    put("section", nextPeriod.optString("name", ""))
+                }
+            } else if (periods.length() > 0) {
+                val lastPeriod = periods.getJSONObject(periods.length() - 1)
+                val lastEndMin = lastPeriod.optInt("eh", 17) * 60 + lastPeriod.optInt("em", 40)
+                if (currentMinutes >= lastEndMin) {
+                    state = "completed"
+                }
+            }
+
+            // 构建 gridData（4天×4节）
+            val gridData = org.json.JSONArray()
+            for (dayOffset in 0 until 4) {
+                val targetCal = java.util.Calendar.getInstance().apply { add(java.util.Calendar.DAY_OF_YEAR, dayOffset) }
+                val targetWeekdayVal = targetCal.get(java.util.Calendar.DAY_OF_WEEK)
+                val targetWeekdayNum = if (targetWeekdayVal == java.util.Calendar.SUNDAY) 7 else targetWeekdayVal - 1
+                val dayLabel = "${targetCal.get(java.util.Calendar.MONTH) + 1}/${targetCal.get(java.util.Calendar.DAY_OF_MONTH)}"
+                val weekdayLabel = weekdays[targetWeekdayNum]
+                val isToday = dayOffset == 0
+
+                val dayCourses = org.json.JSONArray()
+                for (periodIdx in 1..4) {
+                    val course = findCourseForRefresh(courses, targetWeekdayNum, periodIdx)
+                    dayCourses.put(org.json.JSONObject().apply {
+                        put("period", periodIdx)
+                        put("name", course?.optString("courseName", "") ?: "")
+                        put("color", course?.optInt("colorIndex", -1) ?: -1)
+                    })
+                }
+
+                gridData.put(org.json.JSONObject().apply {
+                    put("date", dayLabel)
+                    put("weekday", weekdayLabel)
+                    put("isToday", isToday)
+                    put("courses", dayCourses)
+                })
+            }
+
+            // 完整 snapshot
+            org.json.JSONObject().apply {
+                put("date", dateText)
+                put("state", state)
+                put("highlightCourse", highlightCourseJson)
+                put("allCourses", allCoursesJson)
+                put("totalCourseCount", allCoursesJson.length())
+                put("gridData", gridData)
+            }.toString()
+        } catch (e: Exception) {
+            Log.e(TAG, "生成 snapshot 失败", e)
+            ""
+        }
+    }
+
+    private fun findCourseForRefresh(courses: MutableList<org.json.JSONObject>, weekday: Int, periodIndex: Int): org.json.JSONObject? {
+        for (course in courses) {
+            if (course.optInt("weekday") == weekday && course.optInt("periodIndex") == periodIndex) {
+                return course
+            }
+        }
+        return null
+    }
+
+    private fun getDefaultPeriodsForRefresh(weekday: Int): org.json.JSONArray {
+        val workDayPeriods = arrayOf(
+            mapOf("index" to 1, "sh" to 8, "sm" to 0, "eh" to 9, "em" to 40, "name" to "第1-2节", "startTime" to "08:00", "endTime" to "09:40"),
+            mapOf("index" to 2, "sh" to 10, "sm" to 0, "eh" to 11, "em" to 40, "name" to "第3-4节", "startTime" to "10:00", "endTime" to "11:40"),
+            mapOf("index" to 3, "sh" to 14, "sm" to 0, "eh" to 15, "em" to 40, "name" to "第5-6节", "startTime" to "14:00", "endTime" to "15:40"),
+            mapOf("index" to 4, "sh" to 16, "sm" to 0, "eh" to 17, "em" to 40, "name" to "第7-8节", "startTime" to "16:00", "endTime" to "17:40"),
+            mapOf("index" to 5, "sh" to 19, "sm" to 0, "eh" to 20, "em" to 40, "name" to "第9-10节", "startTime" to "19:00", "endTime" to "20:40"),
+            mapOf("index" to 6, "sh" to 20, "sm" to 50, "eh" to 21, "em" to 30, "name" to "第11-12节", "startTime" to "20:50", "endTime" to "21:30"),
+            mapOf("index" to 7, "sh" to 21, "sm" to 40, "eh" to 22, "em" to 20, "name" to "第13-14节", "startTime" to "21:40", "endTime" to "22:20"),
+            mapOf("index" to 8, "sh" to 22, "sm" to 30, "eh" to 23, "em" to 10, "name" to "第15-16节", "startTime" to "22:30", "endTime" to "23:10")
+        )
+
+        val weekendPeriods = arrayOf(
+            mapOf("index" to 1, "sh" to 8, "sm" to 30, "eh" to 10, "em" to 0, "name" to "第1-2节", "startTime" to "08:30", "endTime" to "10:00"),
+            mapOf("index" to 2, "sh" to 10, "sm" to 15, "eh" to 11, "em" to 45, "name" to "第3-4节", "startTime" to "10:15", "endTime" to "11:45"),
+            mapOf("index" to 3, "sh" to 14, "sm" to 0, "eh" to 15, "em" to 30, "name" to "第5-6节", "startTime" to "14:00", "endTime" to "15:30"),
+            mapOf("index" to 4, "sh" to 15, "sm" to 45, "eh" to 17, "em" to 15, "name" to "第7-8节", "startTime" to "15:45", "endTime" to "17:15"),
+            mapOf("index" to 5, "sh" to 19, "sm" to 0, "eh" to 20, "em" to 30, "name" to "第9-10节", "startTime" to "19:00", "endTime" to "20:30"),
+            mapOf("index" to 6, "sh" to 20, "sm" to 45, "eh" to 22, "em" to 15, "name" to "第11-12节", "startTime" to "20:45", "endTime" to "22:15")
+        )
+
+        val isWeekend = weekday == 6 || weekday == 7
+        val selectedPeriods = if (isWeekend) weekendPeriods else workDayPeriods
+        val json = org.json.JSONArray()
+        for (p in selectedPeriods) json.put(org.json.JSONObject(p))
+        return json
     }
 
     /**

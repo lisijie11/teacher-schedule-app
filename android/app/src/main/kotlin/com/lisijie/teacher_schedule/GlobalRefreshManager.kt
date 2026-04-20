@@ -6,6 +6,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.os.SystemClock
 import android.util.Log
 import org.json.JSONArray
 import org.json.JSONObject
@@ -14,25 +15,30 @@ import java.util.Calendar
 /**
  * 全局刷新管理器 - 低功耗后台任务调度
  *
- * 使用 AlarmManager + BroadcastReceiver 实现定期刷新：
- * - 刷新间隔：15 分钟
- * - 使用 setExactAndAllowWhileIdle 确保准时执行
- * - 支持设备空闲时执行（低耗电）
+ * 使用双重策略确保小部件数据持续更新：
+ * 1. 精确定时：setExactAndAllowWhileIdle（15分钟）
+ * 2. 兜底定时：setInexactRepeating（30分钟）
+ * 3. 数据时间戳：snapshot 中记录生成时间，小部件可检测过期
  */
 object GlobalRefreshManager {
 
     private const val TAG = "GlobalRefreshManager"
     private const val ACTION_GLOBAL_REFRESH = "com.lisijie.teacher_schedule.GLOBAL_REFRESH"
+    private const val ACTION_GLOBAL_REFRESH_FALLBACK = "com.lisijie.teacher_schedule.GLOBAL_REFRESH_FALLBACK"
     private const val REQUEST_CODE = 10001
+    private const val FALLBACK_REQUEST_CODE = 10002
     private const val REFRESH_INTERVAL_MS = 15 * 60 * 1000L // 15分钟
+    private const val FALLBACK_INTERVAL_MS = 30 * 60 * 1000L // 30分钟兜底
 
     /**
-     * 启动全局刷新
+     * 启动全局刷新（双重调度策略）
      */
     fun start(context: Context) {
-        Log.d(TAG, "启动全局刷新管理器")
+        Log.d(TAG, "启动全局刷新管理器（双重策略）")
 
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+
+        // ── 策略1：精确定时刷新 ──
         val intent = Intent(context, GlobalRefreshReceiver::class.java).apply {
             action = ACTION_GLOBAL_REFRESH
         }
@@ -43,22 +49,59 @@ object GlobalRefreshManager {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        // 使用 setExactAndAllowWhileIdle 实现低功耗定时刷新
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            alarmManager.setExactAndAllowWhileIdle(
-                AlarmManager.RTC_WAKEUP,
-                System.currentTimeMillis() + REFRESH_INTERVAL_MS,
-                pendingIntent
-            )
-        } else {
-            alarmManager.setExact(
-                AlarmManager.RTC_WAKEUP,
-                System.currentTimeMillis() + REFRESH_INTERVAL_MS,
-                pendingIntent
-            )
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                alarmManager.setExactAndAllowWhileIdle(
+                    AlarmManager.RTC_WAKEUP,
+                    System.currentTimeMillis() + REFRESH_INTERVAL_MS,
+                    pendingIntent
+                )
+            } else {
+                alarmManager.setExact(
+                    AlarmManager.RTC_WAKEUP,
+                    System.currentTimeMillis() + REFRESH_INTERVAL_MS,
+                    pendingIntent
+                )
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "精确定时调度失败", e)
         }
 
-        Log.d(TAG, "AlarmManager 全局刷新已调度（15分钟间隔）")
+        // ── 策略2：兜底周期刷新（防止系统省电杀掉精确闹钟）──
+        val fallbackIntent = Intent(context, GlobalRefreshReceiver::class.java).apply {
+            action = ACTION_GLOBAL_REFRESH_FALLBACK
+        }
+        val fallbackPendingIntent = PendingIntent.getBroadcast(
+            context,
+            FALLBACK_REQUEST_CODE,
+            fallbackIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        try {
+            alarmManager.cancel(fallbackPendingIntent) // 先取消旧的
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                // 使用 setInexactRepeating 作为兜底
+                alarmManager.setInexactRepeating(
+                    AlarmManager.RTC_WAKEUP,
+                    System.currentTimeMillis() + FALLBACK_INTERVAL_MS,
+                    FALLBACK_INTERVAL_MS,
+                    fallbackPendingIntent
+                )
+            } else {
+                alarmManager.setRepeating(
+                    AlarmManager.RTC_WAKEUP,
+                    System.currentTimeMillis() + FALLBACK_INTERVAL_MS,
+                    FALLBACK_INTERVAL_MS,
+                    fallbackPendingIntent
+                )
+            }
+            Log.d(TAG, "兜底周期调度已设置（30分钟间隔）")
+        } catch (e: Exception) {
+            Log.e(TAG, "兜底调度失败", e)
+        }
+
+        Log.d(TAG, "全局刷新已启动")
     }
 
     /**
@@ -66,17 +109,24 @@ object GlobalRefreshManager {
      */
     fun stop(context: Context) {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        val intent = Intent(context, GlobalRefreshReceiver::class.java).apply {
-            action = ACTION_GLOBAL_REFRESH
-        }
+
+        // 取消精确闹钟
+        val intent = Intent(context, GlobalRefreshReceiver::class.java).apply { action = ACTION_GLOBAL_REFRESH }
         val pendingIntent = PendingIntent.getBroadcast(
-            context,
-            REQUEST_CODE,
-            intent,
+            context, REQUEST_CODE, intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         alarmManager.cancel(pendingIntent)
-        Log.d(TAG, "AlarmManager 全局刷新已停止")
+
+        // 取消兜底闹钟
+        val fallbackIntent = Intent(context, GlobalRefreshReceiver::class.java).apply { action = ACTION_GLOBAL_REFRESH_FALLBACK }
+        val fallbackPendingIntent = PendingIntent.getBroadcast(
+            context, FALLBACK_REQUEST_CODE, fallbackIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        alarmManager.cancel(fallbackPendingIntent)
+
+        Log.d(TAG, "全局刷新已停止")
     }
 
     /**
@@ -84,8 +134,7 @@ object GlobalRefreshManager {
      */
     fun isRunning(context: Context): Boolean {
         val pendingIntent = PendingIntent.getBroadcast(
-            context,
-            REQUEST_CODE,
+            context, REQUEST_CODE,
             Intent(context, GlobalRefreshReceiver::class.java),
             PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
         )
@@ -95,35 +144,39 @@ object GlobalRefreshManager {
 
 /**
  * 全局刷新广播接收器 - 收到 Alarm 后执行刷新
+ * 支持精确刷新和兜底刷新两种 action
  */
 class GlobalRefreshReceiver : BroadcastReceiver() {
 
     companion object {
         private const val TAG = "GlobalRefreshReceiver"
         private const val ACTION_GLOBAL_REFRESH = "com.lisijie.teacher_schedule.GLOBAL_REFRESH"
+        private const val ACTION_GLOBAL_REFRESH_FALLBACK = "com.lisijie.teacher_schedule.GLOBAL_REFRESH_FALLBACK"
         private const val REQUEST_CODE = 10001
         private const val REFRESH_INTERVAL_MS = 15 * 60 * 1000L
     }
 
     override fun onReceive(context: Context?, intent: Intent?) {
-        if (context == null || intent?.action != ACTION_GLOBAL_REFRESH) return
+        if (context == null) return
+        val action = intent?.action ?: return
 
-        Log.d(TAG, "GlobalRefreshReceiver 收到广播，开始刷新")
+        // 接受两种 action
+        if (action != ACTION_GLOBAL_REFRESH && action != ACTION_GLOBAL_REFRESH_FALLBACK) return
+
+        Log.d(TAG, "收到广播：$action，开始刷新")
 
         try {
             // 执行刷新逻辑
             performRefresh(context)
 
-            // 重新调度下一次刷新
-            reschedule(context)
+            // 只有精确刷新才重新调度下一次（兜底是周期性的）
+            if (action == ACTION_GLOBAL_REFRESH) {
+                reschedule(context)
+            }
         } catch (e: Exception) {
             Log.e(TAG, "刷新失败", e)
-
-            // 即使失败也重新调度
-            try {
-                reschedule(context)
-            } catch (e2: Exception) {
-                Log.e(TAG, "重新调度失败", e2)
+            if (action == ACTION_GLOBAL_REFRESH) {
+                try { reschedule(context) } catch (_: Exception) {}
             }
         }
     }
@@ -337,7 +390,7 @@ class GlobalRefreshReceiver : BroadcastReceiver() {
             })
         }
 
-        // 构建完整的 snapshot
+        // 构建完整的 snapshot（包含时间戳用于检测数据新鲜度）
         val snapshot = JSONObject().apply {
             put("date", dateText)
             put("state", state)
@@ -346,6 +399,9 @@ class GlobalRefreshReceiver : BroadcastReceiver() {
             put("allCourses", allCoursesJson)
             put("totalCourseCount", allCoursesJson.length())
             put("gridData", gridData)
+            // 添加时间戳（毫秒），小部件可用此判断数据是否过期
+            put("timestamp", System.currentTimeMillis())
+            put("timestampReadable", java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date()))
         }
 
         return snapshot.toString()

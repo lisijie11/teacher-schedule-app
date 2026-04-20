@@ -343,6 +343,8 @@ class WidgetService {
         'periodIndex': c.periodIndex,
         'courseName': c.courseName,
         'classroom': c.classroom,
+        'colorIndex': c.colorIndex,
+        'note': c.note ?? '',
       }).toList();
 
       final json = jsonEncode({
