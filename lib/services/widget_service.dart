@@ -189,7 +189,7 @@ class WidgetService {
         for (final period in tomorrowPeriods) {
           final course = _getCourseForPeriod(box, tomorrowWeekday, period.index);
           if (course != null && course.courseName.isNotEmpty) {
-            final timePart = period.index <= 4 ? 'morning' : 'afternoon';
+            final timePart = period.index <= 2 ? 'morning' : 'afternoon';
             tomorrowCourses.add({
               'period': period.index,
               'periodName': period.name,
@@ -371,24 +371,106 @@ class WidgetService {
       final total = allTodos.length;
       final progress = total == 0 ? 0.0 : doneCount / total;
 
-      // 取前5条未完成待办
-      final topPending = pending.take(5).map((t) => {
+      // 计算最近截止日期
+      int daysLeft = -1;
+      String nearestTitle = '';
+      final now = DateTime.now();
+      for (final t in pending) {
+        if (t.deadline != null) {
+          final diff = t.deadline!.difference(now).inDays;
+          if (diff >= 0 && (daysLeft < 0 || diff < daysLeft)) {
+            daysLeft = diff;
+            nearestTitle = t.title;
+          }
+        }
+      }
+
+      // 按分类统计
+      final catKeys = ['research', 'teaching', 'teacherComp', 'studentComp'];
+      final catCounts = <String, int>{};
+      final catDone = <String, int>{};
+      for (final key in catKeys) {
+        catCounts[key] = allTodos.where((t) => t.category == key).length;
+        catDone[key] = allTodos.where((t) => t.category == key && t.isDone).length;
+      }
+
+      // 取前10条未完成待办（带分类信息）
+      final topPending = pending.take(10).map((t) => {
         'title': t.title,
         'priority': t.priority,
+        'category': t.category,
       }).toList();
 
+      // 总数据（供原有 TodoWidget 使用）
       final json = jsonEncode({
         'totalCount': total,
         'doneCount': doneCount,
         'pendingCount': pending.length,
         'progress': progress,
+        'categories': {
+          for (final key in catKeys)
+            key: {
+              'count': catCounts[key],
+              'done': catDone[key],
+            },
+        },
         'items': topPending,
+        'daysLeft': daysLeft,
+        'nearestTitle': nearestTitle,
       });
 
       await _widgetChannel.invokeMethod('saveWidgetData', {
         'key': 'todo_json',
         'value': json,
       });
+
+      // 按分类写入 4 个独立 key（供分类小部件使用）
+      for (final catKey in catKeys) {
+        final catTodos = allTodos.where((t) => t.category == catKey).toList();
+        final catPending = catTodos.where((t) => !t.isDone).toList();
+        final catDoneCount = catTodos.where((t) => t.isDone).length;
+        final catTotal = catTodos.length;
+        final catProgress = catTotal == 0 ? 0.0 : catDoneCount / catTotal;
+
+        // 分类内最近截止日期
+        int catDaysLeft = -1;
+        String catNearestTitle = '';
+        for (final t in catPending) {
+          if (t.deadline != null) {
+            final diff = t.deadline!.difference(now).inDays;
+            if (diff >= 0 && (catDaysLeft < 0 || diff < catDaysLeft)) {
+              catDaysLeft = diff;
+              catNearestTitle = t.title;
+            }
+          }
+        }
+
+        final catItems = catPending.take(10).map((t) => {
+          'title': t.title,
+          'priority': t.priority,
+          'isDone': t.isDone,
+          'daysLeft': t.deadline != null
+              ? t.deadline!.difference(now).inDays
+              : -1,
+        }).toList();
+
+        final catJson = jsonEncode({
+          'category': catKey,
+          'totalCount': catTotal,
+          'doneCount': catDoneCount,
+          'pendingCount': catPending.length,
+          'progress': catProgress,
+          'items': catItems,
+          'daysLeft': catDaysLeft,
+          'nearestTitle': catNearestTitle,
+        });
+
+        await _widgetChannel.invokeMethod('saveWidgetData', {
+          'key': 'todo_json_$catKey',
+          'value': catJson,
+        });
+      }
+
       print('[WidgetService] 待办数据已写入: ${pending.length}待办 ${doneCount}完成');
     } catch (e) {
       print('[WidgetService] 写入待办数据失败: $e');

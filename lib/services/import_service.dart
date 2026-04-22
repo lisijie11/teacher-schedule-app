@@ -59,7 +59,7 @@ class ImportService {
       // 构建完整的导出数据
       final exportData = {
         'app': 'teacher_schedule_backup',
-        'version': '3.0',  // 升级版本号，支持待办和头像
+        'version': '3.1',  // 支持 category 和 deadline 字段
         'exportTime': DateTime.now().toIso8601String(),
         // 课程数据
         'courses': courses.map((c) => {
@@ -152,6 +152,172 @@ class ImportService {
     return backupDir;
   }
 
+  /// 单独导出待办事项并通过系统分享
+  static Future<bool> exportTodosAndShare() async {
+    try {
+      final todos = _exportTodos();
+      if (todos.isEmpty) return false;
+
+      final backupDir = await getBackupDirectory();
+
+      final exportData = {
+        'app': 'teacher_schedule_todo_backup',
+        'version': '1.0',
+        'exportTime': DateTime.now().toIso8601String(),
+        'todos': todos,
+      };
+
+      final jsonString = const JsonEncoder.withIndent('  ').convert(exportData);
+      final fileName = '待办事项备份_${_formatDateTime()}.json';
+      final file = File('${backupDir.path}/$fileName');
+      await file.writeAsString(jsonString);
+
+      debugPrint('待办事项备份已导出到: ${file.path}');
+
+      await Share.shareXFiles(
+        [XFile(file.path)],
+        subject: '教师课表助手 - 待办事项备份',
+        text: '包含全部待办事项（分类、截止日期、优先级等）',
+      );
+
+      await backupDir.delete(recursive: true);
+      return true;
+    } catch (e) {
+      debugPrint('导出待办事项失败: $e');
+      return false;
+    }
+  }
+
+  /// 单独导出待办事项到剪贴板
+  static Future<bool> exportTodosToClipboard() async {
+    try {
+      final todos = _exportTodos();
+      if (todos.isEmpty) return false;
+
+      final exportData = {
+        'app': 'teacher_schedule_todo_backup',
+        'version': '1.0',
+        'exportTime': DateTime.now().toIso8601String(),
+        'todos': todos,
+      };
+
+      final jsonString = const JsonEncoder.withIndent('  ').convert(exportData);
+      await Clipboard.setData(ClipboardData(text: jsonString));
+      return true;
+    } catch (e) {
+      debugPrint('导出待办事项到剪贴板失败: $e');
+      return false;
+    }
+  }
+
+  /// 从剪贴板导入待办事项（覆盖模式）
+  /// 返回导入的条目数，-1=格式错误，-2=剪贴板为空
+  static Future<int> importTodosFromClipboard() async {
+    try {
+      final clipboardData = await Clipboard.getData(Clipboard.kTextPlain);
+      final text = clipboardData?.text;
+
+      if (text == null || text.isEmpty) return -2;
+
+      final data = json.decode(text) as Map<String, dynamic>;
+
+      // 检查是否是待办备份格式
+      if (data['app'] != 'teacher_schedule_todo_backup') {
+        // 也支持从完整备份中提取待办
+        if (data['app'] == 'teacher_schedule_backup') {
+          return _importTodosFromData(data, incremental: false);
+        }
+        return -1;
+      }
+
+      return _importTodosFromData(data, incremental: false);
+    } catch (e) {
+      debugPrint('从剪贴板导入待办失败: $e');
+      return -1;
+    }
+  }
+
+  /// 从剪贴板增量导入待办事项（不覆盖现有数据）
+  /// 返回导入的条目数，-1=格式错误，-2=剪贴板为空，-3=全部重复无新增
+  static Future<int> importTodosIncrementally() async {
+    try {
+      final clipboardData = await Clipboard.getData(Clipboard.kTextPlain);
+      final text = clipboardData?.text;
+
+      if (text == null || text.isEmpty) return -2;
+
+      final data = json.decode(text) as Map<String, dynamic>;
+
+      // 检查是否是待办备份格式
+      if (data['app'] != 'teacher_schedule_todo_backup') {
+        // 也支持从完整备份中提取待办
+        if (data['app'] == 'teacher_schedule_backup') {
+          return _importTodosFromData(data, incremental: true);
+        }
+        return -1;
+      }
+
+      return _importTodosFromData(data, incremental: true);
+    } catch (e) {
+      debugPrint('从剪贴板增量导入待办失败: $e');
+      return -1;
+    }
+  }
+
+  /// 从 JSON 数据中导入待办事项
+  /// incremental=true 时为增量导入（跳过已存在的 id），否则覆盖导入
+  static Future<int> _importTodosFromData(Map<String, dynamic> data, {bool incremental = false}) async {
+    final todos = data['todos'] as List<dynamic>?;
+    if (todos == null || todos.isEmpty) return 0;
+
+    try {
+      final todoBox = Hive.box<TodoItem>('todos');
+
+      if (!incremental) {
+        // 覆盖模式：清空后导入
+        await todoBox.clear();
+      }
+
+      int count = 0;
+      int skipped = 0;
+      for (final t in todos) {
+        final id = t['id'] as String;
+
+        // 增量模式：跳过已存在的 id
+        if (incremental && todoBox.containsKey(id)) {
+          skipped++;
+          continue;
+        }
+
+        final todo = TodoItem(
+          id: id,
+          title: t['title'] as String,
+          isDone: t['isDone'] as bool? ?? false,
+          createdAt: DateTime.fromMillisecondsSinceEpoch(t['createdAt'] as int),
+          note: t['note'] as String?,
+          priority: t['priority'] as int? ?? 0,
+          category: t['category'] as String? ?? 'research',
+          deadline: t['deadline'] != null
+              ? DateTime.fromMillisecondsSinceEpoch(t['deadline'] as int)
+              : null,
+        );
+        await todoBox.put(todo.id, todo);
+        count++;
+      }
+
+      if (incremental) {
+        debugPrint('增量导入待办 $count 条，跳过 $skipped 条重复');
+        if (count == 0 && skipped > 0) return -3; // 全部重复
+      } else {
+        debugPrint('待办事项已导入 $count 条');
+      }
+      return count;
+    } catch (e) {
+      debugPrint('导入待办事项数据失败: $e');
+      return -1;
+    }
+  }
+
   /// 导出待办事项
   static List<Map<String, dynamic>> _exportTodos() {
     try {
@@ -163,6 +329,8 @@ class ImportService {
         'createdAt': t.createdAt.millisecondsSinceEpoch,
         'note': t.note,
         'priority': t.priority,
+        'category': t.category,
+        'deadline': t.deadline?.millisecondsSinceEpoch,
       }).toList();
     } catch (e) {
       debugPrint('导出待办事项失败: $e');
@@ -412,6 +580,10 @@ class ImportService {
             createdAt: DateTime.fromMillisecondsSinceEpoch(t['createdAt'] as int),
             note: t['note'] as String?,
             priority: t['priority'] as int? ?? 0,
+            category: t['category'] as String? ?? 'research',
+            deadline: t['deadline'] != null
+                ? DateTime.fromMillisecondsSinceEpoch(t['deadline'] as int)
+                : null,
           );
           await todoBox.put(todo.id, todo);
         }

@@ -26,7 +26,7 @@ const MethodChannel _widgetChannel = MethodChannel('com.lisijie.teacher_schedule
 const MethodChannel _routeChannel = MethodChannel('com.lisijie.teacher_schedule/widget_route');
 
 // 应用版本号（与 pubspec.yaml 和 build.gradle 保持一致）
-const String appVersion = '2.8.0';
+const String appVersion = '2.9.7';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();

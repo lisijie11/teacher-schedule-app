@@ -8,6 +8,10 @@
     <string name="widget_desc_large">课表(大)</string>
     <string name="widget_desc_square">课表</string>
     <string name="widget_desc_todo">待办事项</string>
+    <string name="widget_desc_todo_research">科研课题待办</string>
+    <string name="widget_desc_todo_teaching">教改课题待办</string>
+    <string name="widget_desc_todo_teacher_comp">教师比赛待办</string>
+    <string name="widget_desc_todo_student_comp">学生比赛待办</string>
 
     <!-- 小部件默认文本 -->
     <string name="widget_default_date">点击查看课表</string>

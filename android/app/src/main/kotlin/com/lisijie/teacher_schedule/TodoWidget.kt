@@ -29,7 +29,7 @@ class TodoWidget : AppWidgetProvider() {
             Color.parseColor("#1D9BF0"), // 学生比赛 - 蓝
         )
 
-        private val CAT_NAMES = arrayOf("科研", "教改", "教师赛", "学生赛")
+        private val CAT_NAMES = arrayOf("\u79d1\u7814", "\u6559\u6539", "\u5e08\u8d5b", "\u751f\u8d5b")
         private val CAT_KEYS = arrayOf("research", "teaching", "teacherComp", "studentComp")
 
         fun updateWidget(context: Context, mgr: AppWidgetManager, appWidgetId: Int) {
@@ -79,6 +79,10 @@ class TodoWidget : AppWidgetProvider() {
             var totalCount = 0; var doneCount = 0; var pendingCount = 0; var progress = 0.0
             val catCounts = IntArray(4) { 0 }
             val allItems = mutableListOf<Triple<String, Int, String>>()
+            
+            // 截止日期相关
+            var daysLeft = -1
+            var nearestTitle = ""
 
             if (json != null) {
                 try {
@@ -87,6 +91,8 @@ class TodoWidget : AppWidgetProvider() {
                     doneCount = obj.optInt("doneCount", 0)
                     pendingCount = obj.optInt("pendingCount", 0)
                     progress = obj.optDouble("progress", 0.0)
+                    daysLeft = obj.optInt("daysLeft", -1)
+                    nearestTitle = obj.optString("nearestTitle", "")
 
                     val categoriesObj = obj.optJSONObject("categories")
                     if (categoriesObj != null) {
@@ -118,13 +124,16 @@ class TodoWidget : AppWidgetProvider() {
             when {
                 hDp >= 200 -> drawFourCategoryLayout(canvas, dark, wPx, hPx, pad, contentW,
                         catCounts, allItems, totalCount, doneCount, percent,
-                        textPrimary, textSecondary, textMuted, accentBlue, accentGreen, density)
+                        textPrimary, textSecondary, textMuted, accentBlue, accentGreen, density,
+                        daysLeft, nearestTitle)
                 hDp >= 140 -> drawCompactLayout(canvas, dark, wPx, hPx, pad, contentW,
                         catCounts, allItems, totalCount, doneCount, percent,
-                        textPrimary, textSecondary, accentBlue, accentGreen, density)
+                        textPrimary, textSecondary, accentBlue, accentGreen, density,
+                        daysLeft, nearestTitle)
                 else -> drawMiniLayout(canvas, dark, wPx, hPx, pad, contentW,
                         catCounts, allItems, pendingCount, percent,
-                        textPrimary, textSecondary, accentBlue, accentGreen, density)
+                        textPrimary, textSecondary, accentBlue, accentGreen, density,
+                        daysLeft, nearestTitle)
             }
 
             return bitmap
@@ -134,7 +143,8 @@ class TodoWidget : AppWidgetProvider() {
         private fun drawFourCategoryLayout(
             canvas: Canvas, isDark: Boolean, wPx: Int, hPx: Int,
             pad: Float, cw: Float, catCounts: IntArray, items: List<Triple<String, Int, String>>,
-            tc: Int, dc: Int, pct: Int, tpColor: Int, tsColor: Int, tmColor: Int, abColor: Int, agColor: Int, density: Float
+            tc: Int, dc: Int, pct: Int, tpColor: Int, tsColor: Int, tmColor: Int, abColor: Int, agColor: Int, density: Float,
+            daysLeft: Int, nearestTitle: String
         ) {
             val headerBg = if (isDark) Color.parseColor("#252538") else Color.parseColor("#F1F5FF")
             val divColor = if (isDark) Color.parseColor("#2D2D45") else Color.parseColor("#E8EEF8")
@@ -159,9 +169,9 @@ class TodoWidget : AppWidgetProvider() {
             canvas.drawText(statText, wPx - pad, pad * 0.5f + headerH * 0.68f, statPaint)
 
             // ── 四分类卡片行 ──
-            val cardTop = pad * 0.5f + headerH + 8f * density
-            val cardH = 44f * density
-            val cardGap = 4f * density
+            val cardTop = pad * 0.5f + headerH + 6f * density
+            val cardH = 40f * density
+            val cardGap = 3f * density
             val cardLw = (cw - cardGap * 3) / 4f
 
             for (i in 0..3) {
@@ -174,26 +184,27 @@ class TodoWidget : AppWidgetProvider() {
                     color = cc and 0x00FFFFFF or (if (isDark) 30 else 20 shl 24)
                 }
                 val cr = RectF(cx, cy, cx + cardLw, cy + cardH)
-                canvas.drawRoundRect(cr, 10f * density, 10f * density, cardBgPaint)
+                canvas.drawRoundRect(cr, 8f * density, 8f * density, cardBgPaint)
 
                 // 卡片彩色边框
                 val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                    style = Paint.Style.STROKE; strokeWidth = 1.5f * density; color = cc
+                    style = Paint.Style.STROKE; strokeWidth = 1.2f * density; color = cc
                 }
-                canvas.drawRoundRect(cr, 10f * density, 10f * density, strokePaint)
+                canvas.drawRoundRect(cr, 8f * density, 8f * density, strokePaint)
 
                 // 数量数字
                 val countPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                    color = cc; textSize = 18f * density; typeface = Typeface.DEFAULT_BOLD
+                    color = cc; textSize = 16f * density; typeface = Typeface.DEFAULT_BOLD
                     isFakeBoldText = true; textAlign = Paint.Align.CENTER
                 }
-                canvas.drawText("${catCounts[i]}", cx + cardLw / 2f, cy + cardH * 0.52f, countPaint)
+                canvas.drawText("${catCounts[i]}", cx + cardLw / 2f, cy + cardH * 0.50f, countPaint)
 
-                // 分类名称
+                // 分类名称（短名，确保不溢出）
                 val namePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                    color = tmColor; textSize = 9f * density; textAlign = Paint.Align.CENTER
+                    color = tmColor; textSize = 8.5f * density; textAlign = Paint.Align.CENTER
                 }
-                canvas.drawText(CAT_NAMES[i], cx + cardLw / 2f, cy + cardH * 0.85f, namePaint)
+                val displayName = trunc(CAT_NAMES[i], namePaint, cardLw - 4f * density)
+                canvas.drawText(displayName, cx + cardLw / 2f, cy + cardH * 0.84f, namePaint)
             }
 
             // ── 待办列表 ──
@@ -235,16 +246,29 @@ class TodoWidget : AppWidgetProvider() {
                 }
             }
 
-            // 进度条
-            val ratio = if (tc == 0) 0.0f else dc.toFloat() / tc.toFloat()
-            drawProgressBar(canvas, pad, hPx - 14f * density, cw, 6f * density, 4f * density, ratio, pct, agColor, abColor, isDark)
+            // 倒计时条（截止日期提醒）
+            if (daysLeft >= 0 && nearestTitle.isNotEmpty()) {
+                val ctTop = hPx - 14f * density - 20f * density
+                drawCountdownBar(canvas, pad, ctTop, cw, 18f * density, daysLeft,
+                        nearestTitle, isDark, tpColor, tsColor, density, pad)
+                // 进度条上移
+                val ratio = if (tc == 0) 0.0f else dc.toFloat() / tc.toFloat()
+                drawProgressBar(canvas, pad, hPx - 8f * density, cw, 5f * density, 3f * density,
+                        ratio, pct, agColor, abColor, isDark)
+            } else {
+                // 进度条
+                val ratio = if (tc == 0) 0.0f else dc.toFloat() / tc.toFloat()
+                drawProgressBar(canvas, pad, hPx - 14f * density, cw, 6f * density, 4f * density,
+                        ratio, pct, agColor, abColor, isDark)
+            }
         }
 
         // ═══════════════════ 紧凑双行布局 ═══════════════════
         private fun drawCompactLayout(
             canvas: Canvas, isDark: Boolean, wPx: Int, hPx: Int,
             pad: Float, cw: Float, catCounts: IntArray, items: List<Triple<String, Int, String>>,
-            tc: Int, dc: Int, pct: Int, tpColor: Int, tsColor: Int, abColor: Int, agColor: Int, density: Float
+            tc: Int, dc: Int, pct: Int, tpColor: Int, tsColor: Int, abColor: Int, agColor: Int, density: Float,
+            daysLeft: Int, nearestTitle: String
         ) {
             val headerBg = if (isDark) Color.parseColor("#252538") else Color.parseColor("#F1F5FF")
             val headerH = 32f * density
@@ -308,15 +332,27 @@ class TodoWidget : AppWidgetProvider() {
                 }
             }
 
-            val ratio = if (tc == 0) 0.0f else dc.toFloat() / tc.toFloat()
-            drawProgressBar(canvas, pad, hPx - 10f * density, cw, 5f * density, 3f * density, ratio, pct, agColor, abColor, isDark)
+            // 倒计时 + 进度条
+            if (daysLeft >= 0 && nearestTitle.isNotEmpty()) {
+                val ctTop = hPx - 10f * density - 18f * density
+                drawCountdownBar(canvas, pad, ctTop, cw, 16f * density, daysLeft,
+                        nearestTitle, isDark, tpColor, tsColor, density, pad)
+                val ratio = if (tc == 0) 0.0f else dc.toFloat() / tc.toFloat()
+                drawProgressBar(canvas, pad, hPx - 6f * density, cw, 4f * density, 2.5f * density,
+                        ratio, pct, agColor, abColor, isDark)
+            } else {
+                val ratio = if (tc == 0) 0.0f else dc.toFloat() / tc.toFloat()
+                drawProgressBar(canvas, pad, hPx - 10f * density, cw, 5f * density, 3f * density,
+                        ratio, pct, agColor, abColor, isDark)
+            }
         }
 
         // ═══════════════════ 迷你版布局 ═══════════════════
         private fun drawMiniLayout(
             canvas: Canvas, isDark: Boolean, wPx: Int, hPx: Int,
             pad: Float, cw: Float, catCounts: IntArray, items: List<Triple<String, Int, String>>,
-            pc: Int, pct: Int, tpColor: Int, tsColor: Int, abColor: Int, agColor: Int, density: Float
+            pc: Int, pct: Int, tpColor: Int, tsColor: Int, abColor: Int, agColor: Int, density: Float,
+            daysLeft: Int, nearestTitle: String
         ) {
             val headerBg = if (isDark) Color.parseColor("#252538") else Color.parseColor("#F1F5FF")
             val headerH = 30f * density
@@ -377,8 +413,68 @@ class TodoWidget : AppWidgetProvider() {
                 canvas.drawText("\u6682\u65e0\u5f85\u529e", pad + 10f * density, ty + 8f * density, ep)
             }
 
+            // 倒计时（迷你版用文字显示）
+            if (daysLeft >= 0 && nearestTitle.isNotEmpty()) {
+                val cdy = ty + 28f * density
+                val cdColor = if (daysLeft <= 3) Color.parseColor("#EF4444") else if (daysLeft <= 7) Color.parseColor("#F59E0B") else agColor
+                val cdPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = cdColor; textSize = 8.5f * density; typeface = Typeface.DEFAULT_BOLD }
+                val label = if (daysLeft == 0) "\u4eca\u5929\u622a\u6b62" else if (daysLeft == 1) "\u660e\u5929\u622a\u6b62" else "$daysLeft \u5929"
+                canvas.drawText(label, pad, cdy, cdPaint)
+            }
+
             drawProgressBar(canvas, pad, hPx - 8f * density, cw, 4f * density, 2f * density,
                     0.0f, 0, agColor, abColor, isDark)
+        }
+
+        // ═══════════════════ 倒计时条 ═══════════════════
+        private fun drawCountdownBar(
+            c: Canvas, x: Float, y: Float, w: Float, barH: Float,
+            daysLeft: Int, title: String, isDark: Boolean,
+            tpColor: Int, tsColor: Int, density: Float, pad: Float
+        ) {
+            // 背景圆角矩形
+            val bgColor = if (isDark) Color.parseColor("#2D1F1F") else Color.parseColor("#FFF7ED")
+            c.drawRoundRect(RectF(x, y, x + w, y + barH), 6f * density, 6f * density,
+                    Paint(Paint.ANTI_ALIAS_FLAG).apply { color = bgColor })
+
+            // 颜色：0-3天红 / 4-7天橙 / 8+天蓝
+            val cdColor = when {
+                daysLeft <= 3 -> Color.parseColor("#EF4444")
+                daysLeft <= 7 -> Color.parseColor("#F59E0B")
+                else -> Color.parseColor("#1D9BF0")
+            }
+
+            // 左侧彩色竖条
+            val stripeW = 2.5f * density
+            c.drawRoundRect(RectF(x + 2f * density, y + 3f * density, x + 2f * density + stripeW, y + barH - 3f * density),
+                    1.5f * density, 1.5f * density, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = cdColor })
+
+            // ⏰ 图标文字
+            val iconPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = cdColor; textSize = 9.5f * density; typeface = Typeface.DEFAULT_BOLD
+            }
+            val iconX = x + 5.5f * density
+            c.drawText("\u23f0", iconX, y + barH * 0.68f, iconPaint)
+
+            // 倒计时数字（醒目）
+            val numText = if (daysLeft == 0) "\u4eca\u5929" else if (daysLeft == 1) "\u660e\u5929" else "$daysLeft\u5929"
+            val numPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = cdColor; textSize = 10f * density; typeface = Typeface.DEFAULT_BOLD; isFakeBoldText = true
+            }
+            val numX = iconX + 14f * density
+            c.drawText(numText, numX, y + barH * 0.68f, numPaint)
+
+            // 截止标题（截断）
+            val titleStartX = numX + 36f * density
+            val maxTitleW = w - titleStartX - pad - 8f * density
+            val titlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = tsColor; textSize = 8.5f * density }
+            if (maxTitleW > 20f * density) {
+                c.drawText(trunc(title, titlePaint, maxTitleW), titleStartX, y + barH * 0.66f, titlePaint)
+            }
+
+            // 箭头
+            val arrowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = tsColor; textSize = 9f * density }
+            c.drawText("\u25b6", w - pad - 12f * density, y + barH * 0.67f, arrowPaint)
         }
 
         // ═══════════════════ 进度条 ═══════════════════

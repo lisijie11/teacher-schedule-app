@@ -116,6 +116,10 @@ object WidgetSupport {
             ScheduleWidgetMedium::class.java,
             ScheduleWidgetLarge::class.java,
             TodoWidget::class.java,
+            TodoResearchWidget::class.java,
+            TodoTeachingWidget::class.java,
+            TodoTeacherCompWidget::class.java,
+            TodoStudentCompWidget::class.java,
         )
         for (cls in pairs) {
             val ids = mgr.getAppWidgetIds(ComponentName(context, cls))
@@ -125,6 +129,10 @@ object WidgetSupport {
                     ScheduleWidgetMedium::class.java -> ScheduleWidgetMedium.updateWidget(context, mgr, id)
                     ScheduleWidgetLarge::class.java -> ScheduleWidgetLarge.updateWidget(context, mgr, id)
                     TodoWidget::class.java -> TodoWidget.updateWidget(context, mgr, id)
+                    TodoResearchWidget::class.java -> TodoResearchWidget.updateWidget(context, mgr, id)
+                    TodoTeachingWidget::class.java -> TodoTeachingWidget.updateWidget(context, mgr, id)
+                    TodoTeacherCompWidget::class.java -> TodoTeacherCompWidget.updateWidget(context, mgr, id)
+                    TodoStudentCompWidget::class.java -> TodoStudentCompWidget.updateWidget(context, mgr, id)
                 }
             }
         }

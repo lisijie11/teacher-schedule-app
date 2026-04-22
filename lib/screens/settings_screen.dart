@@ -408,6 +408,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const SizedBox(height: 24),
 
           // ═══════════════════════════════════
+          // 待办导入导出
+          // ═══════════════════════════════════
+          _buildSectionTitle(theme, '待办导入导出'),
+          _buildCard(
+            theme,
+            children: [
+              _buildTodoImportTile(theme),  // 覆盖导入
+              const Divider(height: 1),
+              _buildTodoIncrementalImportTile(theme),  // 增量导入
+              const Divider(height: 1),
+              _buildTodoExportShareTile(theme),
+              const Divider(height: 1),
+              _buildTodoExportClipboardTile(theme),
+            ],
+          ),
+
+          const SizedBox(height: 24),
+
+          // ═══════════════════════════════════
           // 关于
           // ═══════════════════════════════════
           _buildSectionTitle(theme, '关于'),
@@ -2827,6 +2846,429 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       ),
     );
+  }
+
+  // ═══════════════════════════════════════════════════════
+  //  待办导入导出
+  // ═══════════════════════════════════════════════════════
+
+  /// 待办导入区域（覆盖模式）
+  Widget _buildTodoImportTile(ThemeData theme) {
+    return InkWell(
+      onTap: _importTodosFromClipboard,
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: AppTheme.accentBlue.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(Icons.content_paste_rounded, color: AppTheme.accentBlue, size: 20),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('覆盖导入待办', style: theme.textTheme.bodyLarge),
+                  const SizedBox(height: 2),
+                  Text(
+                    '从剪贴板导入，会清空并替换当前所有待办',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.chevron_right_rounded,
+              color: theme.textTheme.bodySmall?.color,
+              size: 20,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 待办增量导入区域
+  Widget _buildTodoIncrementalImportTile(ThemeData theme) {
+    return InkWell(
+      onTap: _importTodosIncrementally,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: AppTheme.accentPurple.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(Icons.playlist_add_rounded, color: AppTheme.accentPurple, size: 20),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('增量导入待办', style: theme.textTheme.bodyLarge),
+                  const SizedBox(height: 2),
+                  Text(
+                    '从剪贴板追加新待办，不覆盖已有数据',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.chevron_right_rounded,
+              color: theme.textTheme.bodySmall?.color,
+              size: 20,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 待办导出分享区域
+  Widget _buildTodoExportShareTile(ThemeData theme) {
+    return InkWell(
+      onTap: _exportTodosAndShare,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: AppTheme.accentOrange.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(Icons.share_rounded, color: AppTheme.accentOrange, size: 20),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('分享待办备份', style: theme.textTheme.bodyLarge),
+                  const SizedBox(height: 2),
+                  Text(
+                    '导出并通过微信/QQ等分享',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.chevron_right_rounded,
+              color: theme.textTheme.bodySmall?.color,
+              size: 20,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 待办导出到剪贴板区域
+  Widget _buildTodoExportClipboardTile(ThemeData theme) {
+    return InkWell(
+      onTap: _exportTodosToClipboard,
+      borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16)),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: AppTheme.accentGreen.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(Icons.copy_rounded, color: AppTheme.accentGreen, size: 20),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('复制待办到剪贴板', style: theme.textTheme.bodyLarge),
+                  const SizedBox(height: 2),
+                  Text(
+                    '导出 JSON 到剪贴板，方便粘贴保存',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.chevron_right_rounded,
+              color: theme.textTheme.bodySmall?.color,
+              size: 20,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 从剪贴板导入待办事项（覆盖模式）
+  Future<void> _importTodosFromClipboard() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('覆盖导入待办'),
+        content: const Text(
+          '将从剪贴板导入待办数据。\n\n'
+          '⚠️ 导入会覆盖当前所有待办事项！\n\n'
+          '如需保留现有待办，请使用"增量导入"。\n\n'
+          '请先复制待办备份 JSON，然后点击确定导入。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            style: TextButton.styleFrom(foregroundColor: Colors.grey[600]),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('确定导入'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const PopScope(
+        canPop: false,
+        child: AlertDialog(
+          content: Row(
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(width: 16),
+              Text('正在导入...'),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    final result = await ImportService.importTodosFromClipboard();
+
+    if (!mounted) return;
+    Navigator.pop(context);
+
+    if (result > 0) {
+      try { context.read<TodoProvider>().notifyListeners(); } catch (_) {}
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('✓ 成功导入 $result 条待办事项'),
+          backgroundColor: AppTheme.accentGreen,
+        ),
+      );
+    } else if (result == 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('未找到待办数据')),
+      );
+    } else if (result == -2) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('剪贴板为空，请先复制待办备份数据')),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('导入失败，请确保复制的是正确的待办备份 JSON'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  /// 从剪贴板增量导入待办事项
+  Future<void> _importTodosIncrementally() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('增量导入待办'),
+        content: const Text(
+          '将从剪贴板增量导入待办数据。\n\n'
+          '✓ 只追加新的待办，不会覆盖已有数据\n'
+          '✓ 重复的待办（相同ID）会自动跳过\n\n'
+          '请先复制待办备份 JSON，然后点击确定导入。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            style: TextButton.styleFrom(foregroundColor: Colors.grey[600]),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('确定导入'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const PopScope(
+        canPop: false,
+        child: AlertDialog(
+          content: Row(
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(width: 16),
+              Text('正在导入...'),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    final result = await ImportService.importTodosIncrementally();
+
+    if (!mounted) return;
+    Navigator.pop(context);
+
+    if (result > 0) {
+      try { context.read<TodoProvider>().notifyListeners(); } catch (_) {}
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('✓ 增量导入 $result 条新待办事项'),
+          backgroundColor: AppTheme.accentGreen,
+        ),
+      );
+    } else if (result == -3) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('所有待办已存在，无需导入')),
+      );
+    } else if (result == 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('未找到待办数据')),
+      );
+    } else if (result == -2) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('剪贴板为空，请先复制待办备份数据')),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('导入失败，请确保复制的是正确的待办备份 JSON'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  /// 导出待办并分享
+  Future<void> _exportTodosAndShare() async {
+    final todoBox = Hive.box<TodoItem>('todos');
+    if (todoBox.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('暂无待办事项，无法导出')),
+      );
+      return;
+    }
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const PopScope(
+        canPop: false,
+        child: AlertDialog(
+          content: Row(
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(width: 16),
+              Text('正在导出...'),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    final result = await ImportService.exportTodosAndShare();
+
+    if (!mounted) return;
+    Navigator.pop(context);
+
+    if (!result) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('导出失败'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  /// 导出待办到剪贴板
+  Future<void> _exportTodosToClipboard() async {
+    final todoBox = Hive.box<TodoItem>('todos');
+    if (todoBox.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('暂无待办事项，无法导出')),
+      );
+      return;
+    }
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const PopScope(
+        canPop: false,
+        child: AlertDialog(
+          content: Row(
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(width: 16),
+              Text('正在导出...'),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    final result = await ImportService.exportTodosToClipboard();
+
+    if (!mounted) return;
+    Navigator.pop(context);
+
+    if (result) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('✓ 待办数据已复制到剪贴板'),
+          backgroundColor: AppTheme.accentGreen,
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('导出失败'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 }
 

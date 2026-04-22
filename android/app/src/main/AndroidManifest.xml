@@ -119,6 +119,58 @@
                 android:resource="@xml/widget_config_todo"/>
         </receiver>
 
+        <!-- 科研课题待办 4×2 -->
+        <receiver
+            android:name=".TodoResearchWidget"
+            android:exported="true"
+            android:label="科研课题">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_config_todo_research"/>
+        </receiver>
+
+        <!-- 教改课题待办 4×2 -->
+        <receiver
+            android:name=".TodoTeachingWidget"
+            android:exported="true"
+            android:label="教改课题">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_config_todo_teaching"/>
+        </receiver>
+
+        <!-- 教师比赛待办 4×2 -->
+        <receiver
+            android:name=".TodoTeacherCompWidget"
+            android:exported="true"
+            android:label="教师比赛">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_config_todo_teacher_comp"/>
+        </receiver>
+
+        <!-- 学生比赛待办 4×2 -->
+        <receiver
+            android:name=".TodoStudentCompWidget"
+            android:exported="true"
+            android:label="学生比赛">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_config_todo_student_comp"/>
+        </receiver>
+
         <!-- 超级岛服务 - 悬浮窗实现 -->
         <service
             android:name=".HyperIslandService"

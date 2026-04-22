@@ -450,6 +450,13 @@ class WebService {
     } catch (_) {}
     final isSemesterOver = weekNumber > totalWeeks;
 
+    // 读取用户设置的城市（不再使用定位地址）
+    String userCity = '';
+    try {
+      final box = Hive.box('settings');
+      userCity = box.get('userLocation', defaultValue: '');
+    } catch (_) {}
+
     // ========== 构建 7×4 课程网格（含天气行） ==========
     String scheduleGridHtml = '';
 
@@ -583,43 +590,122 @@ class WebService {
       }
     }
 
-    // ========== 构建待办事项 ==========
-    final pendingTodos = _todos.where((t) => !t.isDone).take(4).toList();
-    final completedTodos = _todos.where((t) => t.isDone).take(2).toList();
-    String todosHtml = '';
+    // ========== 构建待办事项（四分类切换版）==========
+    final catKeys = ['research', 'teaching', 'teacherComp', 'studentComp'];
+    final catNames = ['科研', '教改', '师赛', '生赛'];
+    final catColors = ['#6C63FF', '#07C160', '#FF7043', '#1D9BF0'];
 
-    if (pendingTodos.isEmpty && completedTodos.isEmpty) {
-      todosHtml = '''
-        <div class="module-empty">
-          <span class="empty-icon">✨</span>
-          <span class="empty-text">暂无待办</span>
-        </div>
+    // 按分类分组
+    final todosByCat = <String, List<TodoItem>>{};
+    for (final key in catKeys) {
+      todosByCat[key] = _todos.where((t) => t.category == key).toList();
+    }
+
+    // 生成每个分类的待办 HTML（默认只显示第一个分类）
+    String catTabsHtml = '';
+    String catPanelsHtml = '';
+    for (int i = 0; i < catKeys.length; i++) {
+      final key = catKeys[i];
+      final name = catNames[i];
+      final color = catColors[i];
+      final catTodos = todosByCat[key]!;
+      final pending = catTodos.where((t) => !t.isDone).toList();
+      final done = catTodos.where((t) => t.isDone).toList();
+      final total = catTodos.length;
+      final doneCount = done.length;
+      final progress = total == 0 ? 0 : (doneCount / total * 100).round();
+
+      // 分类标签
+      catTabsHtml += '''
+        <button type="button" class="todo-tab ${i == 0 ? 'active' : ''}" data-cat="$key" style="--cat-color: $color" onclick="event.preventDefault(); event.stopPropagation(); switchTodoCat('$key'); return false;">
+          <span class="tab-dot" style="background: $color"></span>
+          <span class="tab-name">$name</span>
+          <span class="tab-count" style="background: ${color}20; color: $color">${pending.length}</span>
+        </button>
       ''';
-    } else {
-      for (final todo in pendingTodos) {
-        String priorityClass = '';
-        String priorityIcon = '';
-        if (todo.priority == 2) { priorityClass = 'urgent'; priorityIcon = '🔴'; }
-        else if (todo.priority == 1) { priorityClass = 'important'; priorityIcon = '⚡'; }
-        todosHtml += '''
-          <div class="todo-item $priorityClass" data-todo-id="${todo.id}">
-            <div class="todo-check"><span class="check-icon"></span></div>
-            <span class="todo-text">$priorityIcon${todo.title}</span>
+
+      // 分类面板内容
+      String panelContent = '';
+      if (pending.isEmpty && done.isEmpty) {
+        panelContent = '''
+          <div class="todo-cat-empty">
+            <span class="empty-icon">✨</span>
+            <span class="empty-text">暂无$name待办</span>
           </div>
         ''';
-      }
-      if (completedTodos.isNotEmpty) {
-        todosHtml += '<div class="todo-section-title">已完成</div>';
-        for (final todo in completedTodos) {
-          todosHtml += '''
-            <div class="todo-item done" data-todo-id="${todo.id}">
-              <div class="todo-check checked"><span class="check-icon">✓</span></div>
-              <span class="todo-text">${todo.title}</span>
+      } else {
+        // 进度条
+        if (total > 0) {
+          panelContent += '''
+            <div class="todo-cat-progress">
+              <div class="progress-info">
+                <span class="progress-label">完成进度</span>
+                <span class="progress-num" style="color: $color">$doneCount/$total</span>
+              </div>
+              <div class="progress-track"><div class="progress-fill" style="width: $progress%; background: linear-gradient(90deg, $color, ${color}88)"></div></div>
             </div>
           ''';
         }
+
+        // 待办列表
+        for (final todo in pending.take(6)) {
+          final dl = todo.deadline;
+          String countdownHtml = '';
+          if (dl != null) {
+            final daysLeft = dl.difference(now).inDays;
+            if (daysLeft >= 0) {
+              final cdColor = daysLeft <= 3 ? '#EF4444' : (daysLeft <= 7 ? '#F59E0B' : '#1D9BF0');
+              final cdText = daysLeft == 0 ? '今天截止' : (daysLeft == 1 ? '明天截止' : '$daysLeft天后截止');
+              countdownHtml = '<span class="todo-countdown" style="color: $cdColor; background: ${cdColor}15">⏰ $cdText</span>';
+            }
+          }
+
+          String priorityClass = '';
+          String priorityIcon = '';
+          if (todo.priority == 2) { priorityClass = 'urgent'; priorityIcon = '🔴'; }
+          else if (todo.priority == 1) { priorityClass = 'important'; priorityIcon = '⚡'; }
+
+          panelContent += '''
+            <div class="todo-item $priorityClass" data-todo-id="${todo.id}">
+              <div class="todo-check"><span class="check-icon"></span></div>
+              <div class="todo-main">
+                <span class="todo-text">$priorityIcon${todo.title}</span>
+                ${dl != null ? '<span class="todo-deadline">📅 ${dl.month}月${dl.day}日</span>' : ''}
+              </div>
+              $countdownHtml
+            </div>
+          ''';
+        }
+
+        // 已完成
+        if (done.isNotEmpty) {
+          panelContent += '<div class="todo-section-title">已完成 (${done.length})</div>';
+          for (final todo in done.take(3)) {
+            panelContent += '''
+              <div class="todo-item done" data-todo-id="${todo.id}">
+                <div class="todo-check checked"><span class="check-icon">✓</span></div>
+                <span class="todo-text">${todo.title}</span>
+              </div>
+            ''';
+          }
+        }
       }
+
+      catPanelsHtml += '''
+        <div class="todo-cat-panel ${i == 0 ? 'active' : ''}" data-cat="$key">
+          $panelContent
+        </div>
+      ''';
     }
+
+    String todosHtml = '''
+      <div class="todo-tabs">
+        $catTabsHtml
+      </div>
+      <div class="todo-panels">
+        $catPanelsHtml
+      </div>
+    ''';
 
     // 状态判断
     String currentStatus = '休息中';
@@ -844,7 +930,7 @@ class WebService {
     /* 左侧模块容器 */
     .left-modules {
       display: grid;
-      grid-template-rows: 1fr 1fr;
+      grid-template-rows: auto 1fr;
       gap: 16px;
     }
 
@@ -1165,9 +1251,111 @@ class WebService {
     }
 
     /* ===== 待办卡片 ===== */
-    .todo-card .card-body { display: flex; flex-direction: column; gap: 8px; }
+    .todo-card .card-body { display: flex; flex-direction: column; gap: 0; padding: 0; }
 
-    /* 待办项 - 增加交互（点击划线） */
+    /* 分类标签栏 */
+    .todo-tabs {
+      display: flex;
+      gap: 4px;
+      padding: 10px 12px 6px;
+      border-bottom: 1px solid var(--border);
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+    .todo-tabs::-webkit-scrollbar { display: none; }
+
+    .todo-tab {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 5px 10px;
+      border-radius: 20px;
+      border: 1.5px solid transparent;
+      background: transparent;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      white-space: nowrap;
+      font-size: 12px;
+      color: var(--text-secondary);
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .todo-tab:hover {
+      background: var(--bg-secondary);
+    }
+
+    .todo-tab.active {
+      border-color: var(--cat-color);
+      background: var(--cat-color);
+      color: white;
+    }
+
+    .todo-tab.active .tab-count {
+      background: rgba(255,255,255,0.25) !important;
+      color: white !important;
+    }
+
+    .tab-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .tab-count {
+      font-size: 10px;
+      font-weight: 600;
+      padding: 1px 5px;
+      border-radius: 8px;
+      min-width: 16px;
+      text-align: center;
+    }
+
+    /* 分类面板 */
+    .todo-panels {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px 12px;
+      min-height: 0;
+    }
+
+    .todo-cat-panel {
+      display: none;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .todo-cat-panel.active {
+      display: flex;
+    }
+
+    /* 分类进度条 */
+    .todo-cat-progress {
+      margin-bottom: 4px;
+    }
+
+    .progress-info {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 4px;
+    }
+
+    .progress-label {
+      font-size: 11px;
+      color: var(--text-secondary);
+    }
+
+    .todo-cat-empty {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 30px 0;
+      gap: 6px;
+    }
+
+    /* 待办项 */
     .todo-item {
       display: flex;
       align-items: center;
@@ -1228,7 +1416,24 @@ class WebService {
       transform: scale(1.15);
     }
 
-    .todo-text { font-size: 13px; flex: 1; transition: all 0.25s ease; }
+    .todo-main {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .todo-text { font-size: 13px; transition: all 0.25s ease; }
+    .todo-deadline { font-size: 11px; color: var(--text-secondary); }
+    .todo-countdown {
+      font-size: 10px;
+      font-weight: 600;
+      padding: 2px 6px;
+      border-radius: 6px;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
     .todo-section-title { font-size: 11px; color: var(--text-hint); padding: 4px 0; }
 
     /* ===== 课表卡片 ===== */
@@ -1829,7 +2034,7 @@ class WebService {
         ${_userAvatarPath.isNotEmpty ? '<img class="topbar-avatar" src="/api/avatar" alt="avatar">' : '<div class="topbar-avatar-placeholder">👤</div>'}
         <div class="topbar-user-info">
           <span class="topbar-username">${_userName.isNotEmpty ? _userName : '教师'}</span>
-          <span class="topbar-date">$todayStr $todayName${_weather != null && _weather!.location.isNotEmpty ? ' · 📍 ${_weather!.location}' : ''}</span>
+          <span class="topbar-date">$todayStr $todayName${userCity.isNotEmpty ? ' · 📍 $userCity' : ''}</span>
         </div>
       </div>
       <div class="topbar-center">
@@ -2083,7 +2288,21 @@ class WebService {
     // ========================================
 
     // ========================================
-    // 7. 待办事项点击划线效果
+    // 7. 待办分类切换
+    // ========================================
+    function switchTodoCat(catKey) {
+      // 切换标签
+      document.querySelectorAll('.todo-tab').forEach(tab => {
+        tab.classList.toggle('active', tab.dataset.cat === catKey);
+      });
+      // 切换面板
+      document.querySelectorAll('.todo-cat-panel').forEach(panel => {
+        panel.classList.toggle('active', panel.dataset.cat === catKey);
+      });
+    }
+
+    // ========================================
+    // 8. 待办事项点击划线效果
     // ========================================
     document.querySelectorAll('.todo-item:not(.done)').forEach(item => {
       item.addEventListener('click', function(e) {

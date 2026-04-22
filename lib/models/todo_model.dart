@@ -69,6 +69,9 @@ class TodoItem extends HiveObject {
   @HiveField(6)
   String category; // "research" | "teaching" | "teacherComp" | "studentComp"
 
+  @HiveField(7)
+  DateTime? deadline; // 提交截止日期（可选）
+
   TodoItem({
     required this.id,
     required this.title,
@@ -77,6 +80,7 @@ class TodoItem extends HiveObject {
     this.note,
     this.priority = 0,
     this.category = 'research',
+    this.deadline,
   });
 
   TodoCategory get todoCategory => TodoCategoryMeta.fromString(category);
@@ -97,6 +101,7 @@ class TodoItemAdapter extends TypeAdapter<TodoItem> {
       note: fields[4] as String?,
       priority: (fields[5] as int?) ?? 0,
       category: (fields[6] as String?) ?? 'research',
+      deadline: (fields[7] as int?) != null ? DateTime.fromMillisecondsSinceEpoch(fields[7] as int) : null,
     );
   }
 
@@ -110,6 +115,7 @@ class TodoItemAdapter extends TypeAdapter<TodoItem> {
       4: obj.note,
       5: obj.priority,
       6: obj.category,
+      7: obj.deadline?.millisecondsSinceEpoch,
     });
   }
 }
@@ -119,8 +125,17 @@ class TodoProvider extends ChangeNotifier {
 
   List<TodoItem> get todos => _box.values.toList()
     ..sort((a, b) {
+      // 1. 未完成优先
       if (a.isDone != b.isDone) return a.isDone ? 1 : -1;
+      // 2. 按截止日期排序（最近的最前）
+      if (a.deadline != null && b.deadline == null) return -1;
+      if (a.deadline == null && b.deadline != null) return 1;
+      if (a.deadline != null && b.deadline != null) {
+        return a.deadline!.compareTo(b.deadline!);
+      }
+      // 3. 无截止日期的按优先级
       if (a.priority != b.priority) return b.priority.compareTo(a.priority);
+      // 4. 最后按创建时间
       return b.createdAt.compareTo(a.createdAt);
     });
 
@@ -198,6 +213,11 @@ class TodoProvider extends ChangeNotifier {
       final allTodos = _box.values.toList();
       allTodos.sort((a, b) {
         if (a.isDone != b.isDone) return a.isDone ? 1 : -1;
+        if (a.deadline != null && b.deadline == null) return -1;
+        if (a.deadline == null && b.deadline != null) return 1;
+        if (a.deadline != null && b.deadline != null) {
+          return a.deadline!.compareTo(b.deadline!);
+        }
         if (a.priority != b.priority) return b.priority.compareTo(a.priority);
         return b.createdAt.compareTo(a.createdAt);
       });
@@ -207,34 +227,69 @@ class TodoProvider extends ChangeNotifier {
       final total   = allTodos.length;
       final progress = total == 0 ? 0.0 : done.length / total;
 
-      // 四分类数据
+      // 四分类数据（含截止日期）
+      final now = DateTime.now();
       final categories = <String, dynamic>{};
       for (final cat in TodoCategory.values) {
         final catName = TodoCategoryMeta.names[cat]!;
         final catPending = pending.where((t) => t.todoCategory == cat).toList();
+        // 每个分类找最近截止日期
+        DateTime? catNearest;
+        int? catMinDays;
+        for (final t in catPending) {
+          if (t.deadline != null && t.deadline!.isAfter(now)) {
+            final d = t.deadline!.difference(now).inDays;
+            if (catMinDays == null || d < catMinDays!) {
+              catMinDays = d;
+              catNearest = t.deadline;
+            }
+          }
+        }
         categories[cat.name] = {
           'name': catName,
           'count': catPending.length,
+          'nearestDeadline': catNearest?.millisecondsSinceEpoch,
+          'minDaysLeft': catMinDays ?? -1,
           'items': catPending.take(4).map((t) => {
             'title': t.title,
             'priority': t.priority,
             'isDone': t.isDone,
+            'deadline': t.deadline?.millisecondsSinceEpoch,
           }).toList(),
         };
       }
 
-      // 未完成项列表（最多8条，带分类）
+      // 未完成项列表（最多8条，带分类+截止日期）
       final items = pending.take(8).map((t) => {
         'title': t.title,
         'priority': t.priority,
         'category': t.category,
+        'deadline': t.deadline?.millisecondsSinceEpoch,
       }).toList();
+
+      // 找最近截止日期（用于小部件倒计时显示）
+      TodoItem? nearest;
+      for (final t in pending) {
+        if (t.deadline != null && t.deadline!.isAfter(now)) {
+          if (nearest == null || t.deadline!.isBefore(nearest.deadline!)) {
+            nearest = t;
+          }
+        }
+      }
+
+      final nearestMs = nearest?.deadline?.millisecondsSinceEpoch;
+      final daysLeft = nearestMs != null
+          ? (nearest!.deadline!.difference(now).inHours / 24.0).round()
+          : -1; // -1 表示无截止日期
 
       final json = '{"totalCount":$total,"doneCount":${done.length},"pendingCount":${pending.length},'
           '"progress":$progress,'
           '"categories":${const JsonEncoder().convert(categories)},'
           '"items":${const JsonEncoder().convert(items)},'
-          '"timestamp":${DateTime.now().millisecondsSinceEpoch}}';
+          '"timestamp":${DateTime.now().millisecondsSinceEpoch},'
+          '"nearestDeadline":${nearestMs ?? "null"},'
+          '"daysLeft":$daysLeft,'
+          '"nearestTitle":"${nearest?.title ?? ""}"}';
 
       _widgetChannel.invokeMethod('saveWidgetData', {'key': 'todo_json', 'value': json});
       _widgetChannel.invokeMethod('updateWidget', {'widgetName': 'todo'});
